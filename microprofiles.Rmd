@@ -1,0 +1,310 @@
+---
+title: "Untitled"
+author: "Brett D. Jameson"
+date: "2024-06-28"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(plyr)
+```
+
+## Mangrove Biogeochemistry (MBGC) Project
+
+This R Markdown file contains code scripts associated with the processing of sediment microprofile data. Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterise vertical distributions of N2O, NO, H2S, and O2. 
+
+```{r Data input}
+# Read compiled microprofile data
+profiles <- read.csv(file = "./compiled-data/MBGC.mangrove.microprofiles.2024.csv")
+```
+
+## Data parsing
+
+Subset data frame by analyte.
+
+```{r pressure, echo=FALSE}
+sulfide <- subset(profiles, analyte == "Sulfide")
+nitrous <- subset(profiles, analyte == "N2O")
+oxygen <- subset(profiles, analyte == "O2")
+nitric <- subset(profiles, analyte == "NO")
+```
+
+## Exploratory data plots (raw data)
+
+Oxygen profiles.
+
+```{r}
+oxygen %>% subset(experiment == "Mangrove_3" & light.dark == "Dark") %>%
+  ggplot(aes(mV, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(4,-1)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  #scale_x_continuous(limits = c(5,9)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+```
+
+Nitrous oxide profiles.
+
+```{r}
+nitrous %>% subset(experiment == "Mangrove_2" & light.dark == "Dark") %>%
+  ggplot(aes(mV, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(10,-1)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  scale_x_continuous(limits = c(5,9)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+```
+
+Nitric oxide profiles.
+
+```{r}
+nitric %>% subset(experiment == "Mangrove_6" & light.dark == "Light" & channel == 1) %>%
+  ggplot(aes(mV, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  scale_x_continuous(limits = c(3,20)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+
+nitric %>% subset(experiment == "Mangrove_6" & light.dark == "Dark" & channel == 1) %>%
+  ggplot(aes(mV, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  scale_x_continuous(limits = c(3,20)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+```
+
+Sulfide Profiles.
+
+```{r}
+ sulfide %>% subset(depth > 15000) %>%
+  ggplot(aes(mV, depth, color=as.factor(core))) +
+  geom_point() +
+  scale_y_reverse() +
+  facet_wrap(~treatment)
+```
+# Apply calibrations to raw sensor data
+
+Read and subset calibration data.
+```{r}
+cal.data <- read.csv(file = "./compiled-data/MBGC.sensor.calibrations.2024.csv")
+
+nitrous.cal <- cal.data %>% subset(analyte == "N2O")
+ox.cal <- cal.data %>% subset(analyte == "O2")
+nitric.cal <- cal.data %>% subset(analyte == "NO")
+sulf.cal <- cal.data %>% subset(analyte == "Sulfide")
+```
+
+# Calibration data plots 
+
+Plot oxygen calibration data. ERROR BARS ON THESE PLOTS LOOK SUS
+```{r}
+# Calculate mean +/- SD for calibration data 
+ox.cal.sum <- ox.cal %>%
+  plyr::ddply(.(experiment, channel, light.dark, cal.ID, concentration), summarize,
+                    mean.mV = mean(signal.mV, na.rm = TRUE), stdev.mV=sd(signal.mV, na.rm = TRUE))
+
+ox.cal.sum %>% #subset(experiment == "Mangrove_2") %>%
+  ggplot(aes(concentration, mean.mV, color = as.factor(cal.ID), shape = as.factor(channel))) +
+    geom_errorbar(aes(ymin = mean.mV - stdev.mV, ymax = mean.mV + stdev.mV, x = concentration), height = 0.25) +
+    geom_point(size = 2.5) +
+    geom_line() +
+    scale_shape_manual(values = c(0,1,2,3)) +
+    facet_wrap(~light.dark + experiment)
+```
+
+Plot NO calibration data.
+```{r}
+nitric.cal.sum <- nitric.cal %>%
+  plyr::ddply(.(experiment, channel, light.dark, cal.ID, concentration), summarize,
+                    mean.mV = mean(signal.mV, na.rm = TRUE), stdev.mV=sd(signal.mV, na.rm = TRUE))
+
+nitric.cal.sum %>% subset(experiment == "Mangrove_6") %>%
+  ggplot(aes(concentration, mean.mV, color = as.factor(cal.ID), shape = as.factor(channel))) +
+    geom_errorbar(aes(ymin = mean.mV - stdev.mV, ymax = mean.mV + stdev.mV)) +
+    geom_point(size = 2.5) +
+    geom_line() +
+    scale_shape_manual(values = c(0,1,2,3)) +
+    facet_wrap(~light.dark)
+```
+
+Plot N2O calibration data.
+```{r}
+nitrous.cal.sum <- nitrous.cal %>%
+  plyr::ddply(.(experiment, channel, light.dark, cal.ID, concentration), summarize,
+                    mean.mV = mean(signal.mV, na.rm = TRUE), stdev.mV=sd(signal.mV, na.rm = TRUE))
+
+nitrous.cal.sum %>% subset(experiment == "Mangrove_2") %>%
+  ggplot(aes(concentration, mean.mV, color = as.factor(cal.ID), shape = as.factor(channel))) +
+    geom_errorbar(aes(ymin = mean.mV - stdev.mV, ymax = mean.mV + stdev.mV)) +
+    geom_point(size = 2.5) +
+    geom_line() +
+    scale_shape_manual(values = c(0,1,2,3)) +
+    facet_wrap(~light.dark)
+```
+
+# Apply calibrations to raw data
+
+Fit linear models to calibration data to obtain coefficients, then merge calibration coefficients with raw sensor data. Finally, apply calibration coefficients to calculate concentration profiles.
+
+## 1. Oxygen profiles
+
+```{r}
+ox_models <- ox.cal.sum %>% 
+  group_by(experiment, channel, light.dark, cal.ID) %>% 
+  do(data.frame(., as.list(coef(lm(mean.mV~concentration, data = .))))) %>%
+  rename_at(8:9, ~c("intercept", "slope"))
+
+oxygen <- ox_models %>% subset(concentration == 0) %>% select(-mean.mV, -stdev.mV) %>%
+  group_by(experiment, channel, light.dark) %>%
+  pivot_wider(names_from = cal.ID, values_from = c(intercept, slope), names_vary = "slowest") %>%
+  right_join(., oxygen, by = join_by(experiment, channel, light.dark)) %>%
+  #subset(experiment == 'Mangrove_6') %>%
+  select(experiment, channel, light.dark, incubation, treatment, 
+         flume, core, replicate, analyte, time, depth, mV,
+         intercept_1, slope_1)
+
+# calculate concentration for each calibration curve
+oxygen$OX_1 <- (oxygen$mV - oxygen$intercept_1) / oxygen$slope_1
+```
+
+Plot calibrated Ox data.
+```{r}
+oxygen %>% subset(experiment == "Mangrove_2" & light.dark == "Light") %>%
+  ggplot(aes(OX_1, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(4,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = expression(O[2]~"("*mu*"mol L"^-1*")")) +
+  #scale_x_continuous(limits = c(3,20)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+
+oxygen %>% subset(experiment == "Mangrove_2" & light.dark == "Dark") %>%
+  ggplot(aes(OX_1, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(4,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = expression(O[2]~"("*mu*"mol L"^-1*")")) +
+  #scale_x_continuous(limits = c(0,20)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+```
+
+## 2. NO Profiles
+
+```{r}
+nitric_models <- nitric.cal.sum %>% 
+  group_by(experiment, channel, light.dark, cal.ID) %>% 
+  do(data.frame(., as.list(coef(lm(mean.mV~concentration, data = .))))) %>%
+  rename_at(8:9, ~c("intercept", "slope"))
+
+nitric <- nitric_models %>% subset(concentration == 0) %>% select(-mean.mV, -stdev.mV) %>%
+  group_by(experiment, channel, light.dark) %>%
+  pivot_wider(names_from = cal.ID, values_from = c(intercept, slope), names_vary = "slowest") %>%
+  right_join(., nitric, by = join_by(experiment, channel, light.dark)) %>%
+  subset(experiment == 'Mangrove_6') %>%
+  select(experiment, channel, light.dark, incubation, treatment, 
+         flume, core, replicate, analyte, time, depth, mV,
+         intercept_1, slope_1, intercept_2, slope_2)
+
+# calculate concentration for each calibration curve
+nitric$NO_1 <- (nitric$mV - nitric$intercept_1) / nitric$slope_1
+nitric$NO_2 <- (nitric$mV - nitric$intercept_2) / nitric$slope_2
+```
+
+Plot calibrated NO data.
+```{r}
+nitric %>% subset(light.dark == "Light") %>%
+  ggplot(aes(NO_1, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  #scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = expression("NO (nmol"~L^-1*")")) +
+  #scale_x_continuous(limits = c(3,20)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+
+nitric %>% subset(light.dark == "Dark") %>%
+  ggplot(aes(NO_2, depth/1000, color=as.factor(core))) +
+  geom_point(aes(shape = as.factor(channel))) +
+  geom_path(aes(shape = as.factor(channel))) +
+  scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = expression("NO (nmol"~L^-1*")")) +
+  scale_x_continuous(limits = c(0,3000)) +
+  facet_wrap(~treatment+channel, ncol = 2) +
+  theme_bw()
+```
+
+## 3. N2O Profiles
+
+```{r}
+nitrous_models <- nitrous.cal.sum %>% 
+  group_by(experiment, channel, light.dark, cal.ID) %>% 
+  do(data.frame(., as.list(coef(lm(mean.mV~concentration, data = .))))) %>%
+  rename_at(8:9, ~c("intercept", "slope"))
+
+nitrous <- nitrous_models %>% subset(concentration == 0) %>% select(-mean.mV, -stdev.mV) %>%
+  group_by(experiment, channel, light.dark) %>%
+  pivot_wider(names_from = cal.ID, values_from = c(intercept, slope), names_vary = "slowest") %>%
+  right_join(., nitrous, by = join_by(experiment, channel, light.dark)) %>%
+  subset(experiment == 'Mangrove_2') %>%
+  select(experiment, channel, light.dark, incubation, treatment, 
+         flume, core, replicate, analyte, time, depth, mV,
+         intercept_1, slope_1)
+
+# calculate concentration for each calibration curve
+nitrous$N2O_1 <- (nitrous$mV - nitrous$intercept_1) / nitrous$slope_1
+```
+
+Plot calibrated N2O data.
+```{r}
+nitrous %>% subset(light.dark == "Dark") %>%
+  ggplot(aes(N2O_1, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  scale_x_continuous(limits = c(0,100)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+
+nitrous %>% subset(light.dark == "Light") %>%
+  ggplot(aes(N2O_1, depth/1000, color=as.factor(core))) +
+  geom_point() +
+  geom_path() +
+  scale_y_reverse(limits = c(8,-2)) +
+  scale_color_discrete(name = "Core") +
+  labs(y = "Depth (mm)", x = "Signal (mV)") +
+  scale_x_continuous(limits = c(0,150)) +
+  facet_wrap(~treatment) +
+  theme_bw()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
