@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Microprofile data"
 author: "Brett D. Jameson"
 date: "2024-06-28"
 output: html_document
@@ -17,10 +17,13 @@ library(knitr)
 library(plyr)
 ```
 
-## Mangrove Biogeochemistry (MBGC) Project
+## Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
 
-This R Markdown file contains code scripts associated with the processing of sediment microprofile data. Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterise vertical distributions of N2O, NO, H2S, and O2. 
+This R Markdown file contains code scripts associated with the processing of sediment microprofile data. 
 
+Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained using Clark-type microelectrodes from Unisense.
+
+# Data input
 ```{r Data input}
 # Read compiled microprofile data
 profiles <- read.csv(file = "./compiled-data/MBGC.mangrove.microprofiles.2024.csv")
@@ -50,7 +53,7 @@ oxygen %>% subset(experiment == "Mangrove_3" & light.dark == "Dark") %>%
   scale_color_discrete(name = "Core") +
   labs(y = "Depth (mm)", x = "Signal (mV)") +
   #scale_x_continuous(limits = c(5,9)) +
-  facet_wrap(~treatment) +
+  facet_wrap(~experiment + treatment) +
   theme_bw()
 ```
 
