@@ -1,0 +1,216 @@
+---
+title: "Microprofile Experiments"
+author: "Brett D. Jameson"
+date: "2024-08-29"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(plyr)
+library(nplyr)
+library(fuzzyjoin)
+```
+
+## Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
+
+This R Markdown file contains code scripts associated with the processing and visualization of sediment microprofile data. 
+
+Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. Temperatures were monitored throughout each experiment using HOBO temp/light pendant loggers.
+
+# Data input
+
+Read and modify metadata.
+```{r}
+metadata <- read.csv(file="./MBGC.experiment.metadata.csv")
+metadata <- metadata %>% mutate(start.date = as.POSIXct(start.date),
+                                end.date = as.POSIXct(end.date),
+                                low.tide = as.POSIXct(low.tide),
+                                nuts.in = as.POSIXct(nuts.in),
+                                dark.start = as.POSIXct(dark.start),
+                                light.start = as.POSIXct(light.start)) %>%
+                         select(!c(O2, N2O, NO, H2S, notes))
+```
+
+Read and modify HOBO logger files. 
+```{r}
+path.t = "./hobo-data/" #the location of HOBO files for all mangrove experiments
+
+# List data files
+file.names <- list.files(path = path.t, pattern = "csv$")  # list all csv file names in the folder
+#file.names <- file.names[!grepl("metadata", file.names)]   # omit metadata from files to be read in as data
+
+newnames <- c("obs", "date.time", "tempC", "coupler.attached", "host.connected", "stopped", "end.of.file") # create column names
+
+fmt1 <- "%m/%d/%y %I:%M:%S %p"
+df <- tibble(file.name = file.names) %>%
+  mutate(experiment = gsub("^([^_]*_[^_]*)_.*$", "\\1", file.name)) %>% # Get experiment ID from filename
+  mutate(flume = gsub("^[^_]+_[^_]+_[^_]+_[^_]+_([^_]+)_.*", "\\1", file.name)) %>% # Get flume ID from filename
+  mutate(info = map(experiment, ~filter(metadata, experiment == .)),
+         temp0 = map(file.name, ~read_csv(file.path(path.t, .), col_names = newnames, skip =2))) %>%
+  nplyr::nest_mutate(temp0, date.time = as.POSIXct(date.time, format = fmt1))
+```
+
+Trim the HOBO logger data to remove data points outside the incubation interval.
+```{r}
+df_trimmed <- df %>%
+  mutate(temp = map2(temp0, info, ~filter(.x, date.time >= .y$start.date & date.time <= .y$end.date))) 
+```
+
+Combine data files by experiment and add 'flume' identifier
+```{r}
+df_trimmed <- df_trimmed %>% select(!c(file.name, temp0)) %>% 
+  group_by(experiment) %>%
+  nest(temp = c(flume,temp)) %>%
+   mutate(temp = map(temp, function(df) {
+    # Unnest the 'temp' dataframe while keeping 'flume' intact
+    df %>% 
+       unnest_longer(temp) %>%
+       unpack(temp)
+  }))
+```
+
+## Exploratory plots
+
+Create function for generating exploratory temperature log plots
+```{r pressure, echo=FALSE}
+df_trimmed <- df_trimmed %>%
+  mutate(temp_plot = pmap(list(.x = temp, .y = info, .z = experiment),
+                          function(.x, .y, .z) {
+                            ggplot(.x, aes(x = as.POSIXct(date.time), y = tempC, color = flume)) +
+                            geom_vline(xintercept = .y$dark.start, color="darkblue") +
+                            geom_vline(xintercept = .y$light.start, color="darkgreen") +
+                            geom_vline(xintercept = .y$end.date, color = "darkred") +
+                            geom_line() +
+                            geom_point() +
+                            scale_color_manual(values = c("#1B9E77", "#D95F02", "#7570B3", "#E6AB02")) +
+                            labs(title = .z) +
+                            theme_bw()
+                          }
+                        )
+                      )
+```
+
+Pull out and inspect temperature logs for each experiment.
+```{r}
+df_trimmed %>% 
+  filter(experiment == "Mangrove_5") %>%
+  pull(temp_plot)
+```
+
+# Microprofile Data
+
+Read and modify profile and calibration raw data.
+```{r}
+# Read data
+profiles <- read.csv(file = "./compiled-data/MBGC.mangrove.microprofiles.2024.csv")
+profiles <- profiles %>% dplyr::rename(date.time = time) %>%
+                         mutate(date.time = as.POSIXct(date.time, format = "%Y-%m-%d %H:%M"),
+                               date = as.Date(date, format = "%d/%m/%Y"),
+                               flume = as.factor(flume),
+                               core = as.factor(core),
+                               treatment = as.factor(treatment),
+                               replicate = as.factor(replicate),
+                               channel = as.factor(channel))
+
+cal.data <- read.csv(file = "./compiled-data/MBGC.sensor.calibrations.2024.csv")
+cal.trim <- cal.data %>% group_by(experiment, analyte, light.dark, cal.ID, channel) %>%
+                              distinct(experiment, .keep_all = TRUE) %>%
+                              select(-c(cal.point, Calibration.Time.Point, concentration, signal.mV)) %>%
+                         ungroup()  # Ungroup after processing
+```
+
+
+```{r}
+# Combine temperature logs with profiles and calibrations
+df_combined <- df_trimmed %>%
+  select(-temp_plot) %>%
+  mutate(profiles = map(experiment, ~filter(profiles, experiment == .))) %>%
+  mutate(profiles = map(profiles, as_tibble)) %>%
+  mutate(cals = map(experiment, ~filter(cal.trim, experiment == .)))
+```
+
+Some of the cores contain two replicates, when the first profile failed or looked suspicious. 
+We need to select the best profile of the two replicates.
+```{r}
+df_combined <- df_combined %>%
+  mutate(profiles = map(profiles, ~ {
+    # Group by the variable within the nested dataframe
+    .x %>%
+      group_by(date, incubation, experiment, light.dark, treatment, flume, core) %>%
+      # Use if_else to conditionally filter based on presence of replicate == 2
+      filter(if (any(replicate == "2")) replicate == "2" else TRUE) %>%
+      ungroup()  # Ungroup after processing
+  }))
+```
+
+Create function for generating exploratory profile plots
+```{r pressure, echo=FALSE}
+df_combined <- df_combined %>%
+  mutate(profile_plot = map2(profiles, experiment, ~ggplot(.x, aes(x = mV, y = depth, color = core)) +
+                                geom_path(aes(linetype = channel)) +
+                                geom_point(aes(shape = channel)) +
+                                labs(title = .y) +
+                                scale_y_reverse() +
+                                facet_wrap(~flume + light.dark + analyte, ncol = 4, scales = "free_x") +
+                                theme_bw()
+                             ))
+```
+
+Pull out and inspect profile raw data for each experiment
+```{r}
+df_combined %>% 
+  filter(experiment == "Mangrove_5") %>%
+  pull(profile_plot)
+```
+
+Pull out the last 
+```{r}
+# Process the tibble
+df_sliced <- df_combined %>%
+  mutate(zeros = map(profiles, ~ 
+    .x %>%
+      group_by(date, experiment, incubation, light.dark, treatment, flume, core, replicate, channel, analyte) %>%
+      slice_tail(n = 3) %>%
+      #mutate(date.time = round_time(date.time, 5)) %>%
+      ungroup()
+  ))
+
+# Fuzzy join function to join by approximate date-time (within 5 minutes)
+fuzzy_join_by_time <- function(df1, df2, tolerance = 5) {
+  fuzzy_left_join(
+    df1, df2,
+    by = c("date.time" = "date.time"),
+    match_fun = function(x, y) abs(as.numeric(difftime(x, y, units = "mins"))) <= tolerance
+  )
+}
+
+# Apply the join to each pair of data frames in 'list1' and 'list2'
+df_sliced <- df_sliced %>%
+  mutate(zeros = map2(zeros,temp, fuzzy_join_by_time))
+```
+
+
+```{r}
+df_sliced <- df_sliced %>%
+  mutate(temp_correct = map2(zeros, experiment, ~ggplot(.x, aes(x = tempC, y = mV)) +
+                                #geom_path(aes(linetype = channel)) +
+                                geom_point(aes(shape = core, color = flume.x)) +
+                                labs(title = .y) +
+                                facet_wrap(~light.dark+channel, scales = "free", nrow = 2) +
+                                theme_bw()
+                             ))
+
+df_sliced %>% 
+  filter(experiment == "Mangrove_6") %>%
+  pull(temp_correct)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
