@@ -25,7 +25,7 @@ This R Markdown file contains code scripts associated with the processing and vi
 
 Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. Temperatures were monitored throughout each experiment using HOBO temp/light pendant loggers.
 
-# Data input
+## Metadata and HOBO logger data
 
 Read and modify metadata.
 ```{r}
@@ -77,7 +77,7 @@ df_trimmed <- df_trimmed %>% select(!c(file.name, temp0)) %>%
   }))
 ```
 
-## Exploratory plots
+# HOBO exploratory plots
 
 Create function for generating exploratory temperature log plots
 ```{r pressure, echo=FALSE}
@@ -105,9 +105,9 @@ df_trimmed %>%
   pull(temp_plot)
 ```
 
-# Microprofile Data
+## Microprofile Data
 
-Read and modify profile and calibration raw data.
+Read and modify profile data.
 ```{r}
 # Read data
 profiles <- read.csv(file = "./compiled-data/MBGC.mangrove.microprofiles.2024.csv")
@@ -119,7 +119,10 @@ profiles <- profiles %>% dplyr::rename(date.time = time) %>%
                                treatment = as.factor(treatment),
                                replicate = as.factor(replicate),
                                channel = as.factor(channel))
+```
 
+Read and modify calibration data.
+```{r}
 cal.data <- read.csv(file = "./compiled-data/MBGC.sensor.calibrations.2024.csv")
 cal.trim <- cal.data %>% group_by(experiment, analyte, light.dark, cal.ID, channel) %>%
                               distinct(experiment, .keep_all = TRUE) %>%
@@ -127,7 +130,7 @@ cal.trim <- cal.data %>% group_by(experiment, analyte, light.dark, cal.ID, chann
                          ungroup()  # Ungroup after processing
 ```
 
-
+Next we will comined our profile and calibration data with the temperature logs and metadata, mapping by experiment ID.
 ```{r}
 # Combine temperature logs with profiles and calibrations
 df_combined <- df_trimmed %>%
@@ -137,8 +140,8 @@ df_combined <- df_trimmed %>%
   mutate(cals = map(experiment, ~filter(cal.trim, experiment == .)))
 ```
 
-Some of the cores contain two replicates, when the first profile failed or looked suspicious. 
-We need to select the best profile of the two replicates.
+Some of the cores contain two replicates when the first profile failed or looked suspicious. 
+So, we need to select the best profile of the two replicates before downstream processing.
 ```{r}
 df_combined <- df_combined %>%
   mutate(profiles = map(profiles, ~ {
@@ -151,7 +154,9 @@ df_combined <- df_combined %>%
   }))
 ```
 
-Create function for generating exploratory profile plots
+# Microprofile exploratory plots - raw data.
+
+Create function for generating exploratory profile plots.
 ```{r pressure, echo=FALSE}
 df_combined <- df_combined %>%
   mutate(profile_plot = map2(profiles, experiment, ~ggplot(.x, aes(x = mV, y = depth, color = core)) +
@@ -164,14 +169,17 @@ df_combined <- df_combined %>%
                              ))
 ```
 
-Pull out and inspect profile raw data for each experiment
+Pull out and inspect profile raw (mV) data for each experiment
 ```{r}
 df_combined %>% 
   filter(experiment == "Mangrove_5") %>%
   pull(profile_plot)
 ```
 
-Pull out the last 
+## Microprofile temperature corrections
+The profile data is currently in raw mV format. Before applying the calibrations to each experiment, we need to correct the sensor signal readout for changes in temperature during the profiling interval. 
+
+We will start by pulling out the last three observations from each profile, assuming that these values represent 'true' zeros. These data points are then merged with the corresponding HOBO temperature log data to assess how the baseline signal changes with temperature.
 ```{r}
 # Process the tibble
 df_sliced <- df_combined %>%
@@ -179,7 +187,6 @@ df_sliced <- df_combined %>%
     .x %>%
       group_by(date, experiment, incubation, light.dark, treatment, flume, core, replicate, channel, analyte) %>%
       slice_tail(n = 3) %>%
-      #mutate(date.time = round_time(date.time, 5)) %>%
       ungroup()
   ))
 
@@ -197,7 +204,9 @@ df_sliced <- df_sliced %>%
   mutate(zeros = map2(zeros,temp, fuzzy_join_by_time))
 ```
 
+# Plotting signal/temperature relationships.
 
+Define a plot function for visualizing temp/mV relationships.
 ```{r}
 df_sliced <- df_sliced %>%
   mutate(temp_correct = map2(zeros, experiment, ~ggplot(.x, aes(x = tempC, y = mV)) +
@@ -207,10 +216,30 @@ df_sliced <- df_sliced %>%
                                 facet_wrap(~light.dark+channel, scales = "free", nrow = 2) +
                                 theme_bw()
                              ))
+```
 
+Pull out and inspect relationships by experiment/analyte
+```{r}
 df_sliced %>% 
   filter(experiment == "Mangrove_6") %>%
   pull(temp_correct)
 ```
+PROFILE CORRECTION NEEDS TO BE FINISHED.
+
+## Applying sensor calibrations.
+
+Now that the profiles have been corrected for signal drift, we can apply the calibration coefficients to calculate analyte concentrations.
+
+```{r}
+df_combined <- df_combined %>%
+  mutate(profiles = map2(profiles, cals, ~ {
+    # Group by the variables within the nested dataframe
+    .x %>%
+      group_by(date, incubation, experiment, light.dark, treatment, flume, core) %>%
+      # Use the slope and intercept from the matching calibration data
+      mutate(concentration = (.x$mV - .y$intercept) / .y$slope)
+  }))
+```
+
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
