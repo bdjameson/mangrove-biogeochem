@@ -23,7 +23,7 @@ library(broom)
 
 ## Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
 
-This R Markdown file contains code scripts associated with the processing and visualization of sediment microprofile data. 
+This R Markdown file contains scripts associated with the processing and visualization of sediment microprofile data. 
 
 Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. Temperatures were monitored throughout each experiment using HOBO temp/light pendant loggers.
 
@@ -285,7 +285,7 @@ df_sliced <- df_combined %>%
 Define a plot function for visualizing temp/mV relationships.
 ```{r}
 df_sliced <- df_sliced %>%
-  mutate(temp_correct = map2(zeros, experiment, ~ggplot(.x, aes(x = tempC, y = mV)) +
+  mutate(temp_correct = map2(zeros, experiment, ~ggplot(.x, aes(x = date.time, y = mV)) +
                                 #geom_path(aes(linetype = channel)) +
                                 geom_point(aes(shape = core, color = flume)) +
                                 labs(title = .y) +
@@ -298,7 +298,7 @@ df_sliced <- df_sliced %>%
 Pull out and inspect relationships by experiment/analyte.
 ```{r}
 df_sliced %>% 
-  filter(experiment == "Mangrove_8") %>%
+  filter(experiment == "Mangrove_6") %>%
   pull(temp_correct)
 ```
 
