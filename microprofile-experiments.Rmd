@@ -11,12 +11,14 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 
 library(ggplot2)
-library(dplyr)
 library(tidyverse)
 library(knitr)
 library(plyr)
+library(dplyr)
 library(nplyr)
 library(fuzzyjoin)
+library(purrr)
+library(broom)
 ```
 
 ## Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
@@ -127,7 +129,8 @@ cal.data <- read.csv(file = "./compiled-data/MBGC.sensor.calibrations.2024.csv")
 cal.trim <- cal.data %>% group_by(experiment, analyte, light.dark, cal.ID, channel) %>%
                               distinct(experiment, .keep_all = TRUE) %>%
                               select(-c(cal.point, Calibration.Time.Point, concentration, signal.mV)) %>%
-                         ungroup()  # Ungroup after processing
+                         ungroup() %>% # Ungroup after processing
+                         mutate(channel=as.factor(channel))
 ```
 
 Next we will comined our profile and calibration data with the temperature logs and metadata, mapping by experiment ID.
@@ -172,36 +175,109 @@ df_combined <- df_combined %>%
 Pull out and inspect profile raw (mV) data for each experiment
 ```{r}
 df_combined %>% 
-  filter(experiment == "Mangrove_5") %>%
+  filter(experiment == "Mangrove_6") %>%
   pull(profile_plot)
 ```
 
-## Microprofile temperature corrections
+We can see from the Nitric Oxide experiments that we are getting sulfide interference on the sensor, as shown by the large spikes at the bottom of the profile domain. We want to remove these profiles before the drift correction procedure, as the correction relies on the assumption of zero analyte at the bottom of the profile. 
+
+To accomplish this, we will tell R to look at the final mV reading for each profile and remove profiles where this value is significantly larger than the calibration intercept (zero-point.)
+
+```{r}
+# Step 1: Pre-process `cals` to create a lookup table with distinct intercepts per `cals_experiment`, `cals_light.dark`, and `cals_channel`
+cals_lookup <- df_combined %>%
+  unnest(cals, names_sep = "_") %>%  # Add suffix to avoid column name conflicts
+  filter(cals_cal.ID == 1) %>%  # Keep only entries with cal.ID == 1
+  select(cals_experiment, cals_light.dark, cals_channel, cals_analyte, cals_intercept) %>%  # Select relevant columns
+  distinct(cals_experiment, cals_light.dark, cals_channel, .keep_all = TRUE)  # Keep distinct combinations of `light.dark` and `channel`
+
+# Step 2: Apply `map2()` to `profiles` and map the intercept from `cals_lookup`
+df_combined <- df_combined %>%
+  mutate(profiles = map2(profiles, cals, ~ {
+    # Add the relevant intercept value to each row in `profiles` based on `cals_experiment`, `cals_light.dark`, and `cals_channel`
+    .x <- .x %>%
+      left_join(cals_lookup, by = c("experiment" = "cals_experiment",
+                                    "light.dark" = "cals_light.dark", 
+                                    "channel" = "cals_channel"))  # Join with lookup to add intercept
+
+    # Step 3: Apply filtering condition only if analyte is not "H2S"
+    .x <- .x %>%
+      group_by(experiment, date, incubation, light.dark, treatment, flume, core, analyte, channel) %>%
+      filter(if (first(analyte) == "H2S") TRUE else !(last(mV) > (cals_intercept * 2))) %>%
+      ungroup()
+      
+    # Step 4: Remove unnecessary columns
+    .x %>%
+      select(-cals_analyte, -experiment.y)
+  }))
+```
+
+Redefine the plot function to ensure the correct profiles have been removed.
+```{r pressure, echo=FALSE}
+df_combined <- df_combined %>%
+  mutate(profile_plot = map2(profiles, experiment, ~ggplot(.x, aes(x = mV, y = depth, color = core)) +
+                                geom_path(aes(linetype = channel)) +
+                                geom_point(aes(shape = channel)) +
+                                labs(title = .y) +
+                                scale_y_reverse() +
+                                facet_wrap(~flume + light.dark + analyte, ncol = 4, scales = "free_x") +
+                                theme_bw()
+                             ))
+```
+
+Pull out and inspect profile raw (mV) data.
+```{r}
+df_combined %>% 
+  filter(experiment == "Mangrove_6") %>%
+  pull(profile_plot)
+```
+
+## Microprofile signal drift corrections
 The profile data is currently in raw mV format. Before applying the calibrations to each experiment, we need to correct the sensor signal readout for changes in temperature during the profiling interval. 
 
-We will start by pulling out the last three observations from each profile, assuming that these values represent 'true' zeros. These data points are then merged with the corresponding HOBO temperature log data to assess how the baseline signal changes with temperature.
-```{r}
-# Process the tibble
-df_sliced <- df_combined %>%
-  mutate(zeros = map(profiles, ~ 
-    .x %>%
-      group_by(date, experiment, incubation, light.dark, treatment, flume, core, replicate, channel, analyte) %>%
-      slice_tail(n = 3) %>%
-      ungroup()
-  ))
+We will start by merging the profile data with the corresponding HOBO temperature log data. We will then pull out the last three observations from each profile, assuming that these values represent 'true' zeros. These data points are then used to assess how the baseline signal changes with temperature.
 
-# Fuzzy join function to join by approximate date-time (within 5 minutes)
+```{r}
+# Fuzzy join function to join by approximate date-time (within 5 minutes) and by flume
 fuzzy_join_by_time <- function(df1, df2, tolerance = 5) {
   fuzzy_left_join(
     df1, df2,
-    by = c("date.time" = "date.time"),
-    match_fun = function(x, y) abs(as.numeric(difftime(x, y, units = "mins"))) <= tolerance
+    by = c("date.time" = "date.time", "flume" = "flume"),
+    match_fun = list(
+      function(x, y) abs(as.numeric(difftime(x, y, units = "mins"))) <= tolerance,
+      `==`  # Exact match for flume
+    )
   )
 }
 
-# Apply the join to each pair of data frames in 'list1' and 'list2'
-df_sliced <- df_sliced %>%
-  mutate(zeros = map2(zeros,temp, fuzzy_join_by_time))
+# Apply the fuzzy join to each profiles-temp pair, keeping only the closest temperature
+df_combined <- df_combined %>%
+  mutate(profiles = map2(profiles, temp, fuzzy_join_by_time)) %>%
+  mutate(profiles = map(profiles, ~ {
+    .x <- .x %>%
+      # Calculate the time difference
+      mutate(time_diff = abs(as.numeric(difftime(date.time.x, date.time.y, units = "mins")))) %>%
+      # Group by the original date.time and flume to find the closest temperature
+      group_by(date.time.x, flume.x) %>%
+      # Keep only the row with the minimum time difference
+      filter(time_diff == min(time_diff)) %>%
+      ungroup() %>%
+      select(-date.time.y, -time_diff) %>%  # Remove duplicate date.time from temp and the time_diff column
+      dplyr::rename(date.time = date.time.x, flume = flume.x) %>%  # Rename columns
+      select(-coupler.attached, -host.connected, -stopped, -end.of.file)  # Remove specified columns
+
+    # Return the modified profiles
+    .x
+  }))
+
+# Now create df_sliced using the modified profiles, grouping by both date.time and flume
+df_sliced <- df_combined %>%
+  mutate(zeros = map(profiles, ~
+    .x %>%
+      group_by(experiment, light.dark, treatment, flume, core, replicate, channel, analyte) %>%  # Include date.time in the grouping
+      filter(if_else(analyte == "H2S", row_number() <= 3, row_number() > (n() - 3))) %>%
+      ungroup()
+  ))
 ```
 
 # Plotting signal/temperature relationships.
@@ -211,35 +287,167 @@ Define a plot function for visualizing temp/mV relationships.
 df_sliced <- df_sliced %>%
   mutate(temp_correct = map2(zeros, experiment, ~ggplot(.x, aes(x = tempC, y = mV)) +
                                 #geom_path(aes(linetype = channel)) +
-                                geom_point(aes(shape = core, color = flume.x)) +
+                                geom_point(aes(shape = core, color = flume)) +
                                 labs(title = .y) +
                                 facet_wrap(~light.dark+channel, scales = "free", nrow = 2) +
+                                theme_bw() +
+                                facet_wrap(~channel+ light.dark, scales = "free")
+                             ))
+```
+
+Pull out and inspect relationships by experiment/analyte.
+```{r}
+df_sliced %>% 
+  filter(experiment == "Mangrove_8") %>%
+  pull(temp_correct)
+```
+
+Try a drift correction based on the baseline signal versus time relationship.
+```{r}
+# Step 1: Define drift over time using linear regression
+df_model <- df_sliced %>%
+  mutate(drift_model = map(zeros, ~ .x %>%
+    group_by(experiment, light.dark, channel, analyte) %>%
+    # Convert date.time to numeric seconds from the minimum date.time in the group
+    mutate(time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs"))) %>%
+    do({
+      model <- lm(mV ~ time_numeric, data = .)
+      data.frame(
+        slope = coef(model)[2],
+        p_value = summary(model)$coefficients[2, "Pr(>|t|)"],
+        slope_significant = summary(model)$coefficients[2, "Pr(>|t|)"] < 0.05
+      )
+    }) %>%
+    ungroup()
+  ))
+
+# Step 2: Apply correction if slope is significant
+df_corrected <- df_combined %>%
+  mutate(profiles = map2(profiles, df_model$drift_model, ~ .x %>%
+    left_join(.y %>% filter(slope_significant), by = c("experiment", "light.dark", "channel", "analyte")) %>%
+    mutate(
+      time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs")), # Apply same conversion
+      corrected_mV = ifelse(slope_significant, mV - slope * time_numeric, mV)
+    ) %>%
+    select(-slope, -slope_significant, -time_numeric)
+  ))
+```
+
+Now attempt to include temperature effects in the drift correction model.
+```{r}
+# Step 1: Define drift and temperature influence over time using a multiple regression model
+df_model <- df_sliced %>%
+  mutate(drift_model = map(zeros, ~ .x %>%
+    group_by(experiment, light.dark, channel, analyte) %>%
+    # Convert date.time to numeric seconds from the minimum date.time in the group
+    mutate(time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs"))) %>%
+    do({
+      model <- lm(mV ~ time_numeric + tempC, data = .)  # Include tempC in the model
+      data.frame(
+        slope_time = coef(model)["time_numeric"],
+        slope_tempC = coef(model)["tempC"],
+        p_value_time = summary(model)$coefficients["time_numeric", "Pr(>|t|)"],
+        p_value_tempC = summary(model)$coefficients["tempC", "Pr(>|t|)"],
+        slope_time_significant = summary(model)$coefficients["time_numeric", "Pr(>|t|)"] < 0.05,
+        slope_tempC_significant = summary(model)$coefficients["tempC", "Pr(>|t|)"] < 0.05
+      )
+    }) %>%
+    ungroup()
+  ))
+
+# Step 2: Apply correction if either slope is significant
+df_corrected <- df_combined %>%
+  mutate(profiles = map2(profiles, df_model$drift_model, ~ .x %>%
+    left_join(.y %>% filter(slope_time_significant | slope_tempC_significant), 
+              by = c("experiment", "light.dark", "channel", "analyte")) %>%
+    mutate(
+      time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs")), # Apply same conversion
+      corrected_mV = mV - 
+                     ifelse(slope_time_significant, slope_time * time_numeric, 0) - 
+                     ifelse(slope_tempC_significant, slope_tempC * tempC, 0)
+    ) #%>%
+#    select(-slope_time, -slope_tempC, -slope_time_significant, #-slope_tempC_significant, -time_numeric)
+  ))
+```
+
+Create function for visualizing drift-corrected signal.
+```{r pressure, echo=FALSE}
+df_corrected <- df_corrected %>%
+  mutate(profile_plot = map2(profiles, experiment, ~ggplot(.x, aes(x = corrected_mV, y = depth, color = core)) +
+                                geom_path(aes(linetype = channel)) +
+                                geom_point(aes(shape = channel)) +
+                                labs(title = .y) +
+                                scale_y_reverse() +
+                                facet_wrap(~flume + light.dark + analyte, ncol = 4, scales = "free_x") +
                                 theme_bw()
                              ))
 ```
 
-Pull out and inspect relationships by experiment/analyte
+Pull out and inspect profile raw (mV) data for each experiment
 ```{r}
-df_sliced %>% 
+df_corrected %>% 
   filter(experiment == "Mangrove_6") %>%
-  pull(temp_correct)
+  pull(profile_plot)
 ```
-PROFILE CORRECTION NEEDS TO BE FINISHED.
 
 ## Applying sensor calibrations.
 
 Now that the profiles have been corrected for signal drift, we can apply the calibration coefficients to calculate analyte concentrations.
 
 ```{r}
-df_combined <- df_combined %>%
+df_calibrated <- df_corrected %>%
   mutate(profiles = map2(profiles, cals, ~ {
-    # Group by the variables within the nested dataframe
+    # Ensure 'channel' in .y is character to match .x
+    .y <- .y %>% mutate(channel = as.character(channel))
+    
+    # Prepare calibration data with explicit column names for each calibration
+    cal1 <- .y %>%
+      filter(cal.ID == 1) %>%
+      mutate(intercept1 = intercept, slope1 = slope) %>%
+      select(experiment, light.dark, analyte, channel, intercept1, slope1)
+    
+    cal2 <- .y %>%
+      filter(cal.ID == 2) %>%
+      mutate(intercept2 = intercept, slope2 = slope) %>%
+      select(experiment, light.dark, analyte, channel, intercept2, slope2)
+    
+    # Join calibration data to profiles
+    .x <- .x %>%
+      left_join(cal1, by = c("experiment", "light.dark", "analyte", "channel")) %>%
+      left_join(cal2, by = c("experiment", "light.dark", "analyte", "channel"))
+    
+    # Calculate concentrations based on calibration parameters for each channel
     .x %>%
-      group_by(date, incubation, experiment, light.dark, treatment, flume, core) %>%
-      # Use the slope and intercept from the matching calibration data
-      mutate(concentration = (.x$mV - .y$intercept) / .y$slope)
+      mutate(
+        concentration1 = if_else(!is.na(intercept1) & !is.na(slope1), 
+                                 (corrected_mV - intercept1) / slope1, NA_real_),
+        concentration2 = if_else(!is.na(intercept2) & !is.na(slope2), 
+                                 (corrected_mV - intercept2) / slope2, NA_real_)
+      ) %>%
+      select(-intercept1, -slope1, -intercept2, -slope2)  # Clean up unnecessary columns
   }))
 ```
 
+
+Plot the calibrated profiles. 
+```{r pressure, echo=FALSE}
+df_calibrated <- df_calibrated %>%
+  mutate(profile_plot = map2(profiles, experiment, 
+                             ~ggplot(.x, aes(x = concentration1, y = depth, color = core)) +
+                                geom_path(aes(linetype = channel)) +
+                                geom_point(aes(shape = channel)) +
+                                labs(title = .y) +
+                                scale_y_reverse() +
+                                facet_wrap(~flume + light.dark + analyte, ncol = 4, scales = "free_x") +
+                                theme_bw()
+                             ))
+```
+
+Pull out and inspect profile raw (mV) data for each experiment
+```{r}
+df_calibrated %>% 
+  filter(experiment == "Mangrove_8") %>%
+  pull(profile_plot)
+```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
