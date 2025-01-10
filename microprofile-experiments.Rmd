@@ -130,7 +130,9 @@ cal.trim <- cal.data %>% group_by(experiment, analyte, light.dark, cal.ID, chann
                               distinct(experiment, .keep_all = TRUE) %>%
                               select(-c(cal.point, Calibration.Time.Point, concentration, signal.mV)) %>%
                          ungroup() %>% # Ungroup after processing
-                         mutate(channel=as.factor(channel))
+                         mutate(time = as.POSIXct(time, format = "%Y-%m-%d %H:%M"),
+                                channel=as.factor(channel)) %>%
+                         dplyr::rename(cal.time = time)
 ```
 
 Next we will comined our profile and calibration data with the temperature logs and metadata, mapping by experiment ID.
@@ -406,7 +408,7 @@ df_corrected <- df_combined %>%
         TRUE ~ mV # No correction
       )
     ) %>%
-    select(-time_slope, -temp_slope, -time_significant, -temp_significant, -time_p_value, -temp_p_value, -time_numeric) # Clean up
+    select(-time_slope, -temp_slope, -time_significant, -temp_significant, -time_p_value, -temp_p_value, -time_numeric, -intercept) # Clean up
   ))
 ```
 
@@ -432,58 +434,29 @@ df_corrected %>%
 
 ## Applying sensor calibrations.
 
-Now that the profiles have been corrected for signal drift, we can apply the calibration coefficients to calculate analyte concentrations. We will also attempt to identify the "best" calibration based on profile bottom values closest to zero. 
+Now that the profiles have been corrected for signal drift, we can apply the calibration coefficients to calculate analyte concentrations. We will attempt to identify the most recent calibration for each individual profile. 
+
 ```{r}
 df_calibrated <- df_corrected %>%
   mutate(profiles = map2(profiles, cals, ~ {
     # Ensure 'channel' in .y is character to match .x
     .y <- .y %>% mutate(channel = as.character(channel))
     
-    # Separate calibration data into distinct datasets for cal.ID 1 and 2
-    cal1 <- .y %>%
-      filter(cal.ID == 1) %>%
-      mutate(intercept1 = intercept, slope1 = slope) %>%
-      select(experiment, light.dark, analyte, channel, intercept1, slope1)
-    
-    cal2 <- .y %>%
-      filter(cal.ID == 2) %>%
-      mutate(intercept2 = intercept, slope2 = slope) %>%
-      select(experiment, light.dark, analyte, channel, intercept2, slope2)
-    
     # Join calibration data to profiles
     profiles_with_cal <- .x %>%
-      left_join(cal1, by = c("experiment", "light.dark", "analyte", "channel")) %>%
-      left_join(cal2, by = c("experiment", "light.dark", "analyte", "channel"))
-    
-    # Apply calibration logic for each profile
-    profiles_with_cal <- profiles_with_cal %>%
-      group_by(experiment, light.dark, channel, analyte, flume, core) %>%
+      left_join(.y, by = c("experiment", "light.dark", "analyte", "channel")) %>%
       mutate(
-        # Calculate concentrations for both calibrations
-        concentration1 = if_else(
-          !is.na(intercept1) & !is.na(slope1), 
-          (corrected_mV - intercept1) / slope1, 
-          NA_real_
-        ),
-        concentration2 = if_else(
-          !is.na(intercept2) & !is.na(slope2), 
-          (corrected_mV - intercept2) / slope2, 
-          NA_real_
-        ),
-        # Select the best calibration for non-H2S analytes
-        final_concentration = if_else(
-          analyte != "H2S",
-          case_when(
-            !is.na(concentration1) & (is.na(concentration2) | abs(concentration1) <= abs(concentration2)) ~ concentration1,
-            !is.na(concentration2) & (is.na(concentration1) | abs(concentration2) < abs(concentration1))  ~ concentration2,
-            TRUE ~ NA_real_
-          ),
-          # Use only concentration1 for H2S analytes
-          concentration1
-        )
+        # Calculate the time difference between profile and calibration
+        time_diff = abs(difftime(date.time, cal.time, units = "secs"))
       ) %>%
+      group_by(experiment, light.dark, channel, analyte, flume, core, date.time) %>%
+      slice_min(time_diff, with_ties = FALSE) %>%  # Select the closest calibration
       ungroup() %>%
-      select(-intercept1, -slope1, -intercept2, -slope2)  # Clean up unnecessary columns
+      mutate(
+        # Calculate the final concentration using the closest calibration
+        final_concentration = (corrected_mV - intercept) / slope
+      ) %>%
+      select(-time_diff, -cal.time)  # Clean up unnecessary columns
     
     profiles_with_cal
   }))
@@ -506,7 +479,7 @@ df_calibrated <- df_calibrated %>%
 Pull out and inspect the calibrated profiles. 
 ```{r}
 df_calibrated %>% 
-  filter(experiment == "Mangrove_6") %>%
+  filter(experiment == "Mangrove_14") %>%
   pull(profile_plot)
 ```
 
@@ -521,8 +494,8 @@ df_adjusted <- df_calibrated %>%
         dplyr::group_by(light.dark, flume, core, replicate, channel, analyte) %>%
         arrange(if_else(analyte == "H2S", depth, desc(depth))) %>%  # Sort depths based on analyte
         dplyr::mutate(
-          mean_bottom_three = mean(head(concentration1, 3)),  # Take the top 3 rows after sorting
-          adjusted_value = concentration1 - mean_bottom_three  # Subtract the mean from concentration1
+          mean_bottom_three = mean(head(final_concentration, 3)),  # Take the top 3 rows after sorting
+          adjusted_value = final_concentration - mean_bottom_three  # Subtract the mean from concentration1
         ) %>%
         ungroup()
     })
@@ -546,7 +519,7 @@ df_adjusted <- df_adjusted %>%
 Pull out and inspect the calibrated and adjusted profiles. 
 ```{r}
 df_adjusted %>% 
-  filter(experiment == "Mangrove_6") %>%
+  filter(experiment == "Mangrove_14") %>%
   pull(profile_plot)
 ```
 
