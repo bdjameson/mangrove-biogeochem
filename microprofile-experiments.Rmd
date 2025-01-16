@@ -1,5 +1,5 @@
 ---
-title: "Microprofile Experiments"
+title: "Microprofile Corrections"
 author: "Brett D. Jameson"
 date: "2024-08-29"
 output: html_document
@@ -19,6 +19,9 @@ library(nplyr)
 library(fuzzyjoin)
 library(purrr)
 library(broom)
+library(mgcv)
+library(car)
+library(broom)
 ```
 
 ## Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
@@ -31,7 +34,7 @@ Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshl
 
 Read and modify metadata.
 ```{r}
-metadata <- read.csv(file="./MBGC.experiment.metadata.csv")
+metadata <- read.csv(file="./compiled-data//MBGC.experiment.metadata.csv")
 metadata <- metadata %>% mutate(start.date = as.POSIXct(start.date),
                                 end.date = as.POSIXct(end.date),
                                 low.tide = as.POSIXct(low.tide),
@@ -304,9 +307,9 @@ df_sliced %>%
   pull(temp_correct)
 ```
 
-Try a drift correction based on the baseline signal versus time relationship.
+# Drift correction:
+Define drift over time using a multiple regression model
 ```{r}
-# Step 1: Define drift over time using linear regression
 df_model <- df_sliced %>%
   mutate(drift_model = map2(zeros, cals, ~ {
     # Extract only the first calibration intercept (cal.ID == 1)
@@ -357,59 +360,66 @@ df_corrected <- df_combined %>%
 
 Now attempt to include temperature effects in the drift correction model.
 ```{r}
-# Step 1: Define drift and temperature influence over time using a multiple regression model
+# Step 1: Define drift and temperature influence
 df_model <- df_sliced %>%
-  mutate(drift_model = map2(zeros, cals, ~ {
-    # Extract only the first calibration intercept (cal.ID == 1)
-    cal_intercept <- .y %>%
-      filter(cal.ID == 1) %>%
-      distinct(experiment, light.dark, channel, analyte, intercept) # Ensure unique intercepts per group
-
-    # Fit the drift model including temperature as a covariate
-    .x %>%
-      group_by(experiment, light.dark, channel, analyte) %>%
-      mutate(
-        time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs"))
-      ) %>%
-      left_join(cal_intercept, by = c("experiment", "light.dark", "channel", "analyte")) %>%
-      do({
-        model <- lm(mV ~ time_numeric + tempC, data = .) # Fit drift model with temperature
-        summary_model <- summary(model)
-        data.frame(
-          experiment = unique(.$experiment),
-          light.dark = unique(.$light.dark),
-          channel = unique(.$channel),
-          analyte = unique(.$analyte),
-          intercept = coef(model)[1] - unique(.$intercept), # Adjust for calibration intercept
-          time_slope = coef(model)["time_numeric"], # Drift rate over time
-          temp_slope = coef(model)["tempC"], # Drift rate due to temperature
-          time_p_value = summary_model$coefficients["time_numeric", "Pr(>|t|)"],
-          temp_p_value = summary_model$coefficients["tempC", "Pr(>|t|)"],
-          time_significant = summary_model$coefficients["time_numeric", "Pr(>|t|)"] < 0.01,
-          temp_significant = summary_model$coefficients["tempC", "Pr(>|t|)"] < 0.01
-        )
-      }) %>%
-      ungroup()
-  }))
+  mutate(
+    drift_model = map2(zeros, cals, ~ {
+      cal_intercept <- .y %>%
+        filter(cal.ID == 1) %>%
+        distinct(experiment, light.dark, channel, analyte, intercept)
+      
+      .x %>%
+        group_by(experiment, light.dark, channel, analyte) %>%
+        mutate(time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs"))) %>%
+        left_join(cal_intercept, by = c("experiment", "light.dark", "channel", "analyte")) %>%
+        do({
+          # Fit multiple regression model
+          model <- lm(mV ~ time_numeric + I(time_numeric^2) + tempC, data = .)
+          vif_values <- vif(model) # Check for collinearity
+          
+          # If VIF is high, simplify the model
+          if (any(vif_values > 5)) {
+            model <- lm(mV ~ time_numeric + tempC, data = .)
+          }
+          
+          summary_model <- summary(model)
+          data.frame(
+            experiment = unique(.$experiment),
+            light.dark = unique(.$light.dark),
+            channel = unique(.$channel),
+            analyte = unique(.$analyte),
+            intercept = coef(model)[1] - unique(.$intercept),
+            time_slope = coef(model)["time_numeric"],
+            temp_slope = coef(model)["tempC"],
+            time_p_value = summary_model$coefficients["time_numeric", "Pr(>|t|)"],
+            temp_p_value = summary_model$coefficients["tempC", "Pr(>|t|)"],
+            time_significant = summary_model$coefficients["time_numeric", "Pr(>|t|)"] < 0.05,
+            temp_significant = summary_model$coefficients["tempC", "Pr(>|t|)"] < 0.05
+          )
+        }) %>%
+        ungroup()
+    })
+  )
 
 # Step 2: Apply correction if slopes are significant
 df_corrected <- df_combined %>%
-  plyr::mutate(profiles = map2(profiles, df_model$drift_model, ~ .x %>%
-    left_join(
-      .y %>% filter(time_significant | temp_significant), 
-      by = c("experiment", "light.dark", "channel", "analyte") # Match by grouping variables
-    ) %>%
-    mutate(
-      time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs")),
-      corrected_mV = case_when(
-        !is.na(time_slope) & time_significant & temp_significant ~ mV - (intercept + time_slope * time_numeric + temp_slope * tempC), # Correct for both
-        !is.na(time_slope) & time_significant ~ mV - (intercept + time_slope * time_numeric), # Correct for time only
-        !is.na(temp_slope) & temp_significant ~ mV - (intercept + temp_slope * tempC), # Correct for temperature only
-        TRUE ~ mV # No correction
-      )
-    ) %>%
-    select(-time_slope, -temp_slope, -time_significant, -temp_significant, -time_p_value, -temp_p_value, -time_numeric, -intercept) # Clean up
-  ))
+  mutate(profiles = map2(profiles, df_model$drift_model, ~ {
+    .x %>%
+      left_join(
+        .y %>% filter(time_significant | temp_significant),
+        by = c("experiment", "light.dark", "channel", "analyte")
+      ) %>%
+      mutate(
+        time_numeric = as.numeric(difftime(date.time, min(date.time), units = "secs")),
+        corrected_mV = case_when(
+          !is.na(time_slope) & time_significant & temp_significant ~ mV - (intercept + time_slope * time_numeric + temp_slope * tempC),
+          !is.na(time_slope) & time_significant ~ mV - (intercept + time_slope * time_numeric),
+          !is.na(temp_slope) & temp_significant ~ mV - (intercept + temp_slope * tempC),
+          TRUE ~ mV
+        )
+      ) %>%
+      select(-time_slope, -temp_slope, -time_significant, -temp_significant, -time_p_value, -temp_p_value, -time_numeric, -intercept)
+  }))
 ```
 
 Create function for visualizing drift-corrected signal.
@@ -479,7 +489,7 @@ df_calibrated <- df_calibrated %>%
 Pull out and inspect the calibrated profiles. 
 ```{r}
 df_calibrated %>% 
-  filter(experiment == "Mangrove_14") %>%
+  filter(experiment == "Mangrove_6") %>%
   pull(profile_plot)
 ```
 
@@ -519,8 +529,44 @@ df_adjusted <- df_adjusted %>%
 Pull out and inspect the calibrated and adjusted profiles. 
 ```{r}
 df_adjusted %>% 
-  filter(experiment == "Mangrove_14") %>%
+  filter(experiment == "Mangrove_8") %>%
   pull(profile_plot)
+```
+
+## Extract and save profiles by analyte.
+
+```{r}
+# Extract oxygen profile experiments
+oxygen <- df_adjusted %>%
+  mutate(profiles = map(profiles, ~ select(.x, -experiment))) %>%  
+  unnest(profiles) %>%                                            
+  filter(analyte == "O2") %>%
+  select(-info, -temp, -X8, -cals, -profile_plot)
+write.csv(oxygen, "./corrected-profiles/MBGC.oxygen.profiles.corrected.csv")
+
+# Extract N2O profile experiments
+nitrous <- df_adjusted %>%
+  mutate(profiles = map(profiles, ~ select(.x, -experiment))) %>%  
+  unnest(profiles) %>%                                            
+  filter(analyte == "N2O") %>%
+  select(-info, -temp, -X8, -cals, -profile_plot)
+write.csv(oxygen, "./corrected-profiles/MBGC.nitrous.profiles.corrected.csv")
+
+# Extract NO profile experiments
+nitric <- df_adjusted %>%
+  mutate(profiles = map(profiles, ~ select(.x, -experiment))) %>%  
+  unnest(profiles) %>%                                            
+  filter(analyte == "NO") %>%
+  select(-info, -temp, -X8, -cals, -profile_plot)
+write.csv(oxygen, "./corrected-profiles/MBGC.nitric.profiles.corrected.csv")
+
+# Extract H2S profile experiments
+sulfide <- df_adjusted %>%
+  mutate(profiles = map(profiles, ~ select(.x, -experiment))) %>%  
+  unnest(profiles) %>%                                            
+  filter(analyte == "H2S") %>%
+  select(-info, -temp, -X8, -cals, -profile_plot)
+write.csv(oxygen, "./corrected-profiles/MBGC.sulfide.profiles.corrected.csv")
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
