@@ -1,0 +1,411 @@
+---
+title: "PROFILE TXT Generator"
+author: "Brett D. Jameson"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(tidyverse)
+library(knitr)
+library(dplyr)
+library(purrr)
+```
+
+## Mangrove Biogeochemistry (MBGC) Project - PROFILE Model Input Files
+
+This R Markdown file contains scripts for generation of PROFILE model input txt files.. 
+
+Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. 
+
+## Read and modify porosity data
+
+```{r porosity_read, message=FALSE, warning=FALSE}
+porosity <- read.csv(file = "./compiled-data/MBGC.sediment.porosity.csv")
+porosity <- porosity %>%
+  mutate(depth = factor(depth, levels=c("2-3", "1-2", "0-1"))) %>%
+  dplyr::rename(section = depth) %>%
+  mutate(section = as.character(section)) %>%
+  select(experiment, flume, core, section, porosity)
+
+porosity %>% subset(experiment == "Mangrove_12" | experiment == "Mangrove_13") %>%
+  ggplot(aes(porosity, section)) +
+  geom_point(aes(color = as.factor(core))) 
+
+porosity.mean <- porosity %>%
+  filter(experiment %in% c("Mangrove_13"), !is.na(section)) %>%
+  dplyr::group_by(section) %>%
+  dplyr::summarise(mean_porosity = mean(porosity, na.rm = TRUE)) %>%
+  ungroup()
+
+```
+
+# Read profile .csv files
+
+Read in the corrected profiles and combine into a single dataframe.
+```{r profile_read, message=FALSE, warning=FALSE}
+oxygen <- read.csv(file = "./corrected-profiles/MBGC.oxygen.profiles.corrected.csv")
+
+nitrous <- read.csv(file = "./corrected-profiles/MBGC.nitrous.profiles.corrected.csv")
+
+sulfide <- read.csv(file = "./corrected-profiles/MBGC.sulfide.profiles.corrected.csv")
+
+nitric <- read.csv(file = "./corrected-profiles/MBGC.nitric.profiles.corrected.csv")
+
+profiles.corrected <- rbind(oxygen, nitrous, sulfide, nitric) 
+
+profiles.corrected$depth <- profiles.corrected$depth/1000
+```
+
+Merge porosity data with profile data
+```{r data_merge, message=FALSE, warning=FALSE}
+profiles.porosity <- profiles.corrected %>%
+  #subset(analyte != "H2S") %>%
+  left_join(
+    porosity %>% filter(section == "0-1"), 
+    by = c("experiment", "flume", "core")
+  ) %>%
+  filter(!is.na(adjusted_value))
+
+# Define mean porosities
+porosity_values <- porosity.mean$mean_porosity
+
+# Assign porosity values based on depth for H2S profiles
+profiles.porosity <- profiles.porosity %>%
+  mutate(porosity = case_when(
+    depth < 0 ~ 1,
+    analyte == "H2S" & depth >= 0 & depth < 10 ~ porosity_values[1],
+    analyte == "H2S" & depth >= 10 & depth < 20 ~ porosity_values[2],
+    analyte == "H2S" & depth >= 20 ~ porosity_values[3],
+    TRUE ~ porosity  # Keep existing porosity for other cases
+  ))
+```
+
+## Write PROFILE model .txt files
+
+Write individual profiles to .txt files - Nitrous Oxide
+
+```{r N2O_txt_write, message=FALSE, warning=FALSE}
+# Define grouping variables for filenames
+group_vars <- c("experiment", "light_dark", "treatment", "flume", "core", "channel", "analyte")
+
+# Define the exact column order
+selected_vars <- c("X", "FI", "DB", "ALFA", "C")
+
+# Create output directory if it doesn't exist
+output_dir <- "profile-txt-files/nitrous-oxide"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Process and write profile files
+profiles.porosity %>%
+  filter(analyte == "N2O") %>%
+  dplyr::rename(X = depth, C = adjusted_value, FI = porosity) %>%
+  mutate(DB = 0, ALFA = 0, X = as.numeric(X),
+         # Convert any values in 'adjusted_value' < 1 nM to zero
+         C = ifelse(C < 0.001, 0, C)) %>%   
+  group_by(across(all_of(group_vars))) %>%
+  group_split() %>%
+  walk(~ {
+    profile_data <- .x
+    
+    # Ensure X is numeric
+    profile_data <- profile_data %>% mutate(X = as.numeric(X))
+    
+    # Determine depth at bottom of calculation domain
+    bottom_depth <- profile_data %>% filter(C == 0) %>% arrange(X) %>% slice(1) %>% pull(X)
+    if (length(bottom_depth) == 0 || is.na(bottom_depth)) bottom_depth <- max(profile_data$X, na.rm = TRUE)  
+    
+    # Determine concentration in water column (C0)
+    C0 <- profile_data %>% filter(X < 0) %>% pull(C) %>% mean(na.rm = TRUE)
+    if (is.na(C0)) C0 <- 1  
+    
+    # Define model parameterization header
+    header_lines <- c(
+      "Profile Interpretation",
+      "0 Depth at top of calculation domain",
+      paste0(bottom_depth, " Depth at bottom of calculation domain"),
+      "10 Max number of equally spaced zones in interpretation (1 to 12)",
+      "3 Type of boundary conditions (1:t=C b =C, 2:t=C t=F, 3:b=C b=F, 4:T=C b=F, 5:t=F b=C)",
+      "0 First boundary condition",
+      "0 Second boundary condition",
+      "2.2897E-05 Diffusivity in water (D) (Unisense; 26 C, 38.0 PSU)",
+      "2 Expression for sediment diffusivity (Ds) (1: Ds=FI*D, 2: Ds=FI**2*D, 3: Ds=D/1+3*(1-FI))",
+      paste0(C0, " concentration in water column (C0)"),
+      "-1.0E+20 Minimum for production rate",
+      "1.0E+20 Maximum for production rate",
+      "0.001 Maximum deviation (in %) when accepting a calculated minimum",
+      "0.01 Level of significance in the F statistics"
+    )
+    
+    # Define filename
+    filename <- file.path(output_dir, paste0(paste(unique(profile_data[group_vars]), collapse = "_"), ".txt"))
+    
+    # Write header
+    writeLines(header_lines, con = filename)
+    
+    # Sort by numeric X before writing
+    profile_data <- profile_data %>% 
+      select(all_of(selected_vars)) %>%
+      arrange(X)  # Ensure numeric sorting before writing
+    
+    # Format X to 3 decimal places
+    profile_data$X <- formatC(profile_data$X, format = "f", digits = 3)
+    
+    # Write data
+    write.table(
+      profile_data,
+      file = filename, 
+      row.names = FALSE, col.names = TRUE, sep = " ", quote = FALSE, append = TRUE
+    )
+  })
+```
+Oxygen
+
+```{r  O2_txt_write, message=FALSE, warning=FALSE}
+# Define grouping variables for filenames
+group_vars <- c("experiment", "light_dark", "treatment", "flume", "core", "channel", "analyte")
+
+# Define the exact column order
+selected_vars <- c("X", "FI", "DB", "ALFA", "C")
+
+# Create output directory if it doesn't exist
+output_dir <- "profile-txt-files/oxygen"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Process and write profile files
+profiles.porosity %>%
+  filter(analyte == "O2") %>%
+  dplyr::rename(X = depth, C = adjusted_value, FI = porosity) %>%
+  mutate(DB = 0, ALFA = 0, X = as.numeric(X),
+         # Convert any values in 'adjusted_value' < 1 nM to zero
+         C = ifelse(C < 0.001, 0, C)) %>%   
+  group_by(across(all_of(group_vars))) %>%
+  group_split() %>%
+  walk(~ {
+    profile_data <- .x
+    
+    # Ensure X is numeric
+    profile_data <- profile_data %>% mutate(X = as.numeric(X))
+    
+    # Determine depth at bottom of calculation domain
+    bottom_depth <- profile_data %>% filter(C == 0) %>% arrange(X) %>% slice(1) %>% pull(X)
+    if (length(bottom_depth) == 0 || is.na(bottom_depth)) bottom_depth <- max(profile_data$X, na.rm = TRUE)  
+    
+    # Determine concentration in water column (C0)
+    C0 <- profile_data %>% filter(X < 0) %>% pull(C) %>% mean(na.rm = TRUE)
+    if (is.na(C0)) C0 <- 1  
+    
+    # Define model parameterization header
+    header_lines <- c(
+      "Profile Interpretation",
+      "0 Depth at top of calculation domain",
+      paste0(bottom_depth, " Depth at bottom of calculation domain"),
+      "10 Max number of equally spaced zones in interpretation (1 to 12)",
+      "3 Type of boundary conditions (1:t=C b =C, 2:t=C t=F, 3:b=C b=F, 4:T=C b=F, 5:t=F b=C)",
+      "0 First boundary condition",
+      "0 Second boundary condition",
+      "2.2897E-05 Diffusivity in water (D) (Unisense; 26 C, 38.0 PSU)",
+      "2 Expression for sediment diffusivity (Ds) (1: Ds=FI*D, 2: Ds=FI**2*D, 3: Ds=D/1+3*(1-FI))",
+      paste0(C0, " concentration in water column (C0)"),
+      "-1.0E+20 Minimum for production rate",
+      "1.0E+20 Maximum for production rate",
+      "0.001 Maximum deviation (in %) when accepting a calculated minimum",
+      "0.01 Level of significance in the F statistics"
+    )
+    
+    # Define filename
+    filename <- file.path(output_dir, paste0(paste(unique(profile_data[group_vars]), collapse = "_"), ".txt"))
+    
+    # Write header
+    writeLines(header_lines, con = filename)
+    
+    # Sort by numeric X before writing
+    profile_data <- profile_data %>% 
+      select(all_of(selected_vars)) %>%
+      arrange(X)  # Ensure numeric sorting before writing
+    
+    # Format X to 3 decimal places
+    profile_data$X <- formatC(profile_data$X, format = "f", digits = 3)
+    
+    # Write data
+    write.table(
+      profile_data,
+      file = filename, 
+      row.names = FALSE, col.names = TRUE, sep = " ", quote = FALSE, append = TRUE
+    )
+  })
+```
+
+Write H2S profiles.
+```{r  H2S_txt_write, message=FALSE, warning=FALSE}
+# Define grouping variables for filenames
+group_vars <- c("experiment", "light_dark", "treatment", "flume", "core", "channel", "analyte")
+
+# Define the exact column order
+selected_vars <- c("X", "FI", "DB", "ALFA", "C")
+
+# Create output directory if it doesn't exist
+output_dir <- "profile-txt-files/sulfide"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Process and write profile files for H2S
+profiles.porosity %>%
+  filter(analyte == "H2S") %>%
+  dplyr::rename(X = depth, C = adjusted_value, FI = porosity) %>%
+  mutate(DB = 0, ALFA = 0, X = as.numeric(X)) %>%  # Ensure X is numeric before sorting
+  group_by(across(all_of(group_vars))) %>%
+  group_split() %>%
+  walk(~ {
+    profile_data <- .x
+    
+    # Ensure X is numeric
+    profile_data <- profile_data %>% mutate(X = as.numeric(X))
+    
+    # Water column concentration (always zero for H2S)
+    C0 <- 0  
+
+    # Top calculation domain: last zero before a non-zero value
+    top_depth <- profile_data %>%
+      arrange(X) %>%
+      filter(C == 0) %>%
+      slice_tail(n = 1) %>%
+      pull(X)
+
+    if (length(top_depth) == 0 || is.na(top_depth)) {
+      top_depth <- min(profile_data$X, na.rm = TRUE)  # Fallback if no zero found
+    }
+
+    # Bottom calculation domain: last depth in the profile
+    bottom_depth <- max(profile_data$X, na.rm = TRUE)
+
+    # Bottom boundary condition: C at bottom depth
+    bottom_C <- profile_data %>% filter(X == bottom_depth) %>% pull(C)
+    if (length(bottom_C) == 0 || is.na(bottom_C)) bottom_C <- 0  # Fallback if missing
+    
+    # Define model parameterization header
+    header_lines <- c(
+      "Profile Interpretation",
+      paste0(top_depth, " Depth at top of calculation domain"),
+      paste0(bottom_depth, " Depth at bottom of calculation domain"),
+      "12 Max number of equally spaced zones in interpretation (1 to 12)",
+      "1 Type of boundary conditions (1:t=C b =C, 2:t=C t=F, 3:b=C b=F, 4:T=C b=F, 5:t=F b=C)",
+      "0 First boundary condition",  # Always zero for H2S
+      paste0(bottom_C, " Second boundary condition"),  # Concentration at bottom depth
+      "1.7255-05 Diffusivity in water (D) (Unisense; 26 C, 38.0 PSU)",
+      "2 Expression for sediment diffusivity (Ds) (1: Ds=FI*D, 2: Ds=FI**2*D, 3: Ds=D/1+3*(1-FI))",
+      paste0(C0, " concentration in water column (C0)"),  # Always zero
+      "-1.0E+20 Minimum for production rate",
+      "1.0E+20 Maximum for production rate",
+      "0.001 Maximum deviation (in %) when accepting a calculated minimum",
+      "0.01 Level of significance in the F statistics"
+    )
+    
+    # Define filename
+    filename <- file.path(output_dir, paste0(paste(unique(profile_data[group_vars]), collapse = "_"), ".txt"))
+    
+    # Write header
+    writeLines(header_lines, con = filename)
+    
+    # Sort by numeric X before writing
+    profile_data <- profile_data %>% 
+      select(all_of(selected_vars)) %>%
+      arrange(X)  # Ensure numeric sorting before writing
+    
+    # Format X to 3 decimal places
+    profile_data$X <- formatC(profile_data$X, format = "f", digits = 3)
+    
+    # Write data
+    write.table(
+      profile_data,
+      file = filename, 
+      row.names = FALSE, col.names = TRUE, sep = " ", quote = FALSE, append = TRUE
+    )
+  })
+```
+
+Nitric Oxide
+
+```{r  NO_txt_write, message=FALSE, warning=FALSE}
+# Define grouping variables for filenames
+group_vars <- c("experiment", "light_dark", "treatment", "flume", "core", "channel", "analyte")
+
+# Define the exact column order
+selected_vars <- c("X", "FI", "DB", "ALFA", "C")
+
+# Create output directory if it doesn't exist
+output_dir <- "profile-txt-files/nitric-oxide"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Process and write profile files
+profiles.porosity %>%
+  filter(analyte == "NO") %>%
+  dplyr::rename(X = depth, C = adjusted_value, FI = porosity) %>%
+  mutate(DB = 0, ALFA = 0, X = as.numeric(X), # Ensure X is numeric before sorting
+         # Convert any values in 'adjusted_value' < 1 nM to zero
+         C = ifelse(C < 1, 0, C)) %>%  
+  group_by(across(all_of(group_vars))) %>%
+  group_split() %>%
+  walk(~ {
+    profile_data <- .x
+    
+    # Ensure X is numeric
+    profile_data <- profile_data %>% mutate(X = as.numeric(X))
+    
+    # Determine depth at bottom of calculation domain
+    bottom_depth <- profile_data %>% filter(C == 0) %>% arrange(X) %>% slice(1) %>% pull(X)
+    if (length(bottom_depth) == 0 || is.na(bottom_depth)) bottom_depth <- max(profile_data$X, na.rm = TRUE)  
+    
+    # Determine concentration in water column (C0)
+    C0 <- profile_data %>% filter(X < 0) %>% pull(C) %>% mean(na.rm = TRUE)
+    if (is.na(C0)) C0 <- 1  
+    
+    # Define model parameterization header
+    header_lines <- c(
+      "Profile Interpretation",
+      "0 Depth at top of calculation domain",
+      paste0(bottom_depth, " Depth at bottom of calculation domain"),
+      "12 Max number of equally spaced zones in interpretation (1 to 12)",
+      "3 Type of boundary conditions (1:t=C b =C, 2:t=C t=F, 3:b=C b=F, 4:T=C b=F, 5:t=F b=C)",
+      "0 First boundary condition",
+      "0 Second boundary condition",
+      "2.21E-05 Diffusivity in water (D) (Unisense; 26 C, 38.0 PSU)",
+      "2 Expression for sediment diffusivity (Ds) (1: Ds=FI*D, 2: Ds=FI**2*D, 3: Ds=D/1+3*(1-FI))",
+      paste0(C0, " concentration in water column (C0)"),
+      "-1.0E+20 Minimum for production rate",
+      "1.0E+20 Maximum for production rate",
+      "0.001 Maximum deviation (in %) when accepting a calculated minimum",
+      "0.01 Level of significance in the F statistics"
+    )
+    
+    # Define filename
+    filename <- file.path(output_dir, paste0(paste(unique(profile_data[group_vars]), collapse = "_"), ".txt"))
+    
+    # Write header
+    writeLines(header_lines, con = filename)
+    
+    # Sort by numeric X before writing
+    profile_data <- profile_data %>% 
+      select(all_of(selected_vars)) %>%
+      arrange(X)  # Ensure numeric sorting before writing
+    
+    # Format X to 3 decimal places
+    profile_data$X <- formatC(profile_data$X, format = "f", digits = 3)
+    
+    # Write data
+    write.table(
+      profile_data,
+      file = filename, 
+      row.names = FALSE, col.names = TRUE, sep = " ", quote = FALSE, append = TRUE
+    )
+  })
+```

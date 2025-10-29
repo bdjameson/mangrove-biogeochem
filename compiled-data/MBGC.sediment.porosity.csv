@@ -1,0 +1,169 @@
+experiment,assessment,flume,core,depth,boat.weight.g,volume,wet.total.g,wet.weight.g,dry.total.g,dry.weight.g,porosity,flag
+Mangrove_2,pre-hurricane,1,1,NA,NA,NA,NA,NA,NA,NA,NA,
+Mangrove_2,pre-hurricane,1,2,0-1,2.13,2,4.368,2.238,2.766,0.636,0.801,
+Mangrove_2,pre-hurricane,1,3,0-1,2.112,2,4.425,2.313,2.826,0.714,0.7995,
+Mangrove_2,pre-hurricane,2,1,0-1,2.053,2,4.324,2.271,2.744,0.691,0.79,
+Mangrove_2,pre-hurricane,2,2,0-1,2.048,2,5.076,3.028,2.955,0.907,1.0605,>1
+Mangrove_2,pre-hurricane,2,3,0-1,2.186,2,4.485,2.299,2.781,0.595,0.852,
+Mangrove_2,pre-hurricane,3,1,0-1,2.151,2,4.437,2.286,2.847,0.696,0.795,
+Mangrove_2,pre-hurricane,3,2,0-1,2.136,2,4.55,2.414,2.9,0.764,0.825,
+Mangrove_2,pre-hurricane,3,3,0-1,2.203,2,4.425,2.222,2.792,0.589,0.8165,
+Mangrove_2,pre-hurricane,4,1,0-1,2.123,2,4.438,2.315,2.829,0.706,0.8045,
+Mangrove_2,pre-hurricane,4,2,0-1,2.077,2,4.316,2.239,2.752,0.675,0.782,
+Mangrove_2,pre-hurricane,4,3,0-1,2.062,2,4.362,2.3,2.844,0.782,0.759,
+Mangrove_3,pre-hurricane,1,1,0-1,1.805,2,4.203,2.398,2.644,0.839,0.7795,
+Mangrove_3,pre-hurricane,1,2,0-1,1.835,2,4.097,2.262,2.541,0.706,0.778,
+Mangrove_3,pre-hurricane,1,3,0-1,1.953,2,4.292,2.339,2.644,0.691,0.824,
+Mangrove_3,pre-hurricane,2,1,0-1,1.946,2,4.157,2.211,2.562,0.616,0.7975,
+Mangrove_3,pre-hurricane,2,2,0-1,1.731,2,3.995,2.264,2.383,0.652,0.806,
+Mangrove_3,pre-hurricane,2,3,0-1,1.892,2,4.128,2.236,2.499,0.607,0.8145,
+Mangrove_3,pre-hurricane,3,1,0-1,1.906,2,4.128,2.222,2.464,0.558,0.832,
+Mangrove_3,pre-hurricane,3,2,0-1,1.932,2,4.202,2.27,2.539,0.607,0.8315,
+Mangrove_3,pre-hurricane,3,3,0-1,1.824,2,3.991,2.167,2.538,0.714,0.7265,
+Mangrove_3,pre-hurricane,4,1,0-1,2.138,2,4.305,2.167,2.711,0.573,0.797,
+Mangrove_3,pre-hurricane,4,2,0-1,2.191,2,4.366,2.175,2.83,0.639,0.768,
+Mangrove_3,pre-hurricane,4,3,0-1,2.158,2,4.526,2.368,3.012,0.854,0.757,
+Mangrove_4,pre-hurricane,1,1,0-1,1.998,2,4.174,2.176,2.539,0.541,0.8175,
+Mangrove_4,pre-hurricane,1,2,0-1,1.865,2,4.096,2.231,2.552,0.687,0.772,
+Mangrove_4,pre-hurricane,1,3,0-1,1.963,2,4.305,2.342,2.756,0.793,0.7745,
+Mangrove_4,pre-hurricane,2,1,0-1,2.003,2,4.326,2.323,2.644,0.641,0.841,
+Mangrove_4,pre-hurricane,2,2,0-1,1.862,2,3.997,2.135,2.455,0.593,0.771,
+Mangrove_4,pre-hurricane,2,3,0-1,1.964,2,4.202,2.238,2.559,0.595,0.8215,
+Mangrove_4,pre-hurricane,3,1,0-1,1.991,2,4.354,2.363,2.648,0.657,0.853,
+Mangrove_4,pre-hurricane,3,2,0-1,1.995,2,4.294,2.299,2.666,0.671,0.814,
+Mangrove_4,pre-hurricane,3,3,0-1,1.948,2,4.319,2.371,2.648,0.7,0.8355,
+Mangrove_4,pre-hurricane,4,1,0-1,1.93,2,4.264,2.334,2.667,0.737,0.7985,
+Mangrove_4,pre-hurricane,4,2,0-1,1.962,2,4.216,2.254,2.567,0.605,0.8245,
+Mangrove_4,pre-hurricane,4,3,0-1,1.901,2,4.274,2.373,2.589,0.688,0.8425,
+Mangrove_5,pre-hurricane,1,1,0-1,1.955,2,4.275,2.32,2.632,0.677,0.8215,
+Mangrove_5,pre-hurricane,1,2,0-1,1.992,2,4.217,2.225,2.59,0.598,0.8135,
+Mangrove_5,pre-hurricane,1,3,0-1,2.025,2,4.261,2.236,2.675,0.65,0.793,
+Mangrove_5,pre-hurricane,2,1,0-1,1.919,2,4.138,2.219,2.564,0.645,0.787,
+Mangrove_5,pre-hurricane,2,2,0-1,2.063,2,4.334,2.271,2.718,0.655,0.808,
+Mangrove_5,pre-hurricane,2,3,0-1,2.023,2,4.191,2.168,2.606,0.583,0.7925,
+Mangrove_5,pre-hurricane,3,1,0-1,1.941,2,4.226,2.285,2.604,0.663,0.811,
+Mangrove_5,pre-hurricane,3,2,0-1,1.906,2,4.124,2.218,2.538,0.632,0.793,
+Mangrove_5,pre-hurricane,3,3,0-1,2.09,2,4.337,2.247,2.728,0.638,0.8045,
+Mangrove_5,pre-hurricane,4,1,0-1,2.038,2,4.168,2.13,2.655,0.617,0.7565,
+Mangrove_5,pre-hurricane,4,2,0-1,2.016,2,4.321,2.305,2.696,0.68,0.8125,
+Mangrove_5,pre-hurricane,4,3,0-1,1.851,2,4.151,2.3,2.533,0.682,0.809,
+Mangrove_6,pre-hurricane,1,1,0-1,2.04,2,4.255,2.215,2.679,0.639,0.788,
+Mangrove_6,pre-hurricane,1,2,0-1,2.028,2,4.396,2.368,2.914,0.886,0.741,
+Mangrove_6,pre-hurricane,1,3,0-1,2.02,2,4.368,2.348,2.721,0.701,0.8235,
+Mangrove_6,pre-hurricane,2,1,0-1,2.031,2,4.249,2.218,2.753,0.722,0.748,
+Mangrove_6,pre-hurricane,2,2,0-1,1.975,2,4.251,2.276,2.682,0.707,0.7845,
+Mangrove_6,pre-hurricane,2,3,0-1,1.956,2,4.278,2.322,2.731,0.775,0.7735,
+Mangrove_6,pre-hurricane,3,1,0-1,1.69,2,3.979,2.289,2.413,0.723,0.783,
+Mangrove_6,pre-hurricane,3,2,0-1,1.778,2,4.076,2.298,2.465,0.687,0.8055,
+Mangrove_6,pre-hurricane,3,3,0-1,1.883,2,4.177,2.294,2.574,0.691,0.8015,
+Mangrove_6,pre-hurricane,4,1,0-1,1.786,2,4.008,2.222,2.485,0.699,0.7615,
+Mangrove_6,pre-hurricane,4,2,0-1,1.805,2,4.016,2.211,2.424,0.619,0.796,
+Mangrove_6,pre-hurricane,4,3,0-1,1.944,2,4.285,2.341,2.696,0.752,0.7945,
+Mangrove_8,pre-hurricane,1,1,0-1,2.008,2,4.308,2.3,2.7,0.692,0.804,
+Mangrove_8,pre-hurricane,1,2,0-1,1.876,2,4.183,2.307,2.614,0.738,0.7845,
+Mangrove_8,pre-hurricane,1,3,0-1,1.978,2,4.268,2.29,2.712,0.734,0.778,
+Mangrove_8,pre-hurricane,2,1,0-1,2.02,2,4.273,2.253,2.74,0.72,0.7665,
+Mangrove_8,pre-hurricane,2,2,0-1,1.877,2,4.186,2.309,2.639,0.762,0.7735,
+Mangrove_8,pre-hurricane,2,3,0-1,1.981,2,4.338,2.357,2.802,0.821,0.768,
+Mangrove_8,pre-hurricane,3,1,0-1,2.01,2,4.306,2.296,2.824,0.814,0.741,
+Mangrove_8,pre-hurricane,3,2,0-1,2.016,2,4.313,2.297,2.768,0.752,0.7725,
+Mangrove_8,pre-hurricane,3,3,0-1,1.969,2,4.341,2.372,2.785,0.816,0.778,
+Mangrove_8,pre-hurricane,4,1,0-1,1.947,2,4.204,2.257,2.614,0.667,0.795,
+Mangrove_8,pre-hurricane,4,2,0-1,1.977,2,4.175,2.198,2.583,0.606,0.796,
+Mangrove_8,pre-hurricane,4,3,0-1,1.922,2,4.071,2.149,2.556,0.634,0.7575,
+Mangrove_7,pre-hurricane,1,1,0-1,1.828,2,4.292,2.464,2.545,0.717,0.8735,
+Mangrove_7,pre-hurricane,1,2,0-1,1.85,2,4.098,2.248,2.536,0.686,0.781,
+Mangrove_7,pre-hurricane,1,3,0-1,1.971,2,4.297,2.326,2.679,0.708,0.809,
+Mangrove_7,pre-hurricane,2,1,0-1,1.966,2,4.136,2.17,2.602,0.636,0.767,
+Mangrove_7,pre-hurricane,2,2,0-1,1.75,2,3.983,2.233,2.434,0.684,0.7745,
+Mangrove_7,pre-hurricane,2,3,0-1,1.904,2,4.18,2.276,2.625,0.721,0.7775,
+Mangrove_7,pre-hurricane,3,1,0-1,1.925,2,4.104,2.179,2.585,0.66,0.7595,
+Mangrove_7,pre-hurricane,3,2,0-1,1.951,2,4.193,2.242,2.645,0.694,0.774,
+Mangrove_7,pre-hurricane,3,3,0-1,1.841,2,4.139,2.298,2.619,0.778,0.76,
+Mangrove_7,pre-hurricane,4,1,0-1,2.155,2,4.525,2.37,2.972,0.817,0.7765,
+Mangrove_7,pre-hurricane,4,2,0-1,2.211,2,4.472,2.261,2.946,0.735,0.763,
+Mangrove_7,pre-hurricane,4,3,0-1,2.176,2,4.471,2.295,2.988,0.812,0.7415,
+Mangrove_9,pre-hurricane,1,1,0-1,2.122,2,4.368,2.246,2.902,0.78,0.733,
+Mangrove_9,pre-hurricane,1,2,0-1,2.144,2,4.402,2.258,2.91,0.766,0.746,
+Mangrove_9,pre-hurricane,1,3,0-1,2.126,2,4.487,2.361,3.009,0.883,0.739,
+Mangrove_9,pre-hurricane,2,1,0-1,2.069,2,4.383,2.314,2.952,0.883,0.7155,
+Mangrove_9,pre-hurricane,2,2,0-1,2.06,2,4.32,2.26,2.782,0.722,0.769,
+Mangrove_9,pre-hurricane,2,3,0-1,2.209,2,4.471,2.262,2.87,0.661,0.8005,
+Mangrove_9,pre-hurricane,3,1,0-1,2.171,2,4.434,2.263,2.939,0.768,0.7475,
+Mangrove_9,pre-hurricane,3,2,0-1,2.182,2,4.469,2.287,3.025,0.843,0.722,
+Mangrove_9,pre-hurricane,3,3,0-1,2.223,2,4.572,2.349,3.093,0.87,0.7395,
+Mangrove_9,pre-hurricane,4,1,0-1,2.144,2,4.526,2.382,3.109,0.965,0.7085,
+Mangrove_9,pre-hurricane,4,2,0-1,2.098,2,4.483,2.385,2.874,0.776,0.8045,
+Mangrove_9,pre-hurricane,4,3,0-1,2.083,2,4.395,2.312,2.941,0.858,0.727,
+Mangrove_12,post-hurricane,3,1,0-1,1.97,2,4.139,2.169,2.64,0.67,0.7495,
+Mangrove_12,post-hurricane,3,1,1-2,2.022,2,4.217,2.195,2.735,0.713,0.741,
+Mangrove_12,post-hurricane,3,1,2-3,2.046,2,4.32,2.274,2.855,0.809,0.7325,
+Mangrove_12,post-hurricane,3,2,0-1,2.08,2,4.312,2.232,2.833,0.753,0.7395,
+Mangrove_12,post-hurricane,3,2,1-2,2.045,2,4.197,2.152,2.805,0.76,0.696,
+Mangrove_12,post-hurricane,3,2,2-3,1.939,2,4.136,2.197,2.763,0.824,0.6865,
+Mangrove_12,post-hurricane,3,3,0-1,1.96,2,4.19,2.23,2.677,0.717,0.7565,
+Mangrove_12,post-hurricane,3,3,1-2,1.925,2,4.155,2.23,2.711,0.786,0.722,
+Mangrove_12,post-hurricane,3,3,2-3,2.104,2,4.457,2.353,2.994,0.89,0.7315,
+Mangrove_12,post-hurricane,1,1,0-1,2.062,2,4.216,2.154,2.755,0.693,0.7305,
+Mangrove_12,post-hurricane,1,1,1-2,2.037,2,4.362,2.325,2.892,0.855,0.735,
+Mangrove_12,post-hurricane,1,1,2-3,1.875,2,4.162,2.287,2.707,0.832,0.7275,
+Mangrove_12,post-hurricane,1,2,0-1,2.067,2,4.357,2.29,2.897,0.83,0.73,
+Mangrove_12,post-hurricane,1,2,1-2,2.059,2,4.48,2.421,3.049,0.99,0.7155,
+Mangrove_12,post-hurricane,1,2,2-3,2.049,2,4.437,2.388,3.055,1.006,0.691,
+Mangrove_12,post-hurricane,1,3,0-1,2.061,2,4.319,2.258,2.89,0.829,0.7145,
+Mangrove_12,post-hurricane,1,3,1-2,2.005,2,4.493,2.488,3.097,1.092,0.698,
+Mangrove_12,post-hurricane,1,3,2-3,1.985,2,4.408,2.423,2.966,0.981,0.721,
+Mangrove_12,post-hurricane,2,1,0-1,1.719,2,4.025,2.306,2.597,0.878,0.714,
+Mangrove_12,post-hurricane,2,1,1-2,1.813,2,4.173,2.36,2.812,0.999,0.6805,
+Mangrove_12,post-hurricane,2,1,2-3,1.816,2,4.162,2.346,2.736,0.92,0.713,
+Mangrove_12,post-hurricane,2,3,0-1,1.832,2,4.21,2.378,2.773,0.941,0.7185,
+Mangrove_12,post-hurricane,2,3,1-2,1.971,2,4.509,2.538,3.105,1.134,0.702,
+Mangrove_12,post-hurricane,2,3,2-3,1.978,2,4.396,2.418,3.047,1.069,0.6745,
+Mangrove_13,post-hurricane,3,1,0-1,1.97,2,4.139,2.169,2.64,0.67,0.7495,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,1,1-2,2.022,2,4.217,2.195,2.735,0.713,0.741,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,1,2-3,2.046,2,4.32,2.274,2.855,0.809,0.7325,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,2,0-1,2.08,2,4.312,2.232,2.833,0.753,0.7395,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,2,1-2,2.045,2,4.197,2.152,2.805,0.76,0.696,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,2,2-3,1.939,2,4.136,2.197,2.763,0.824,0.6865,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,3,0-1,1.96,2,4.19,2.23,2.677,0.717,0.7565,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,3,1-2,1.925,2,4.155,2.23,2.711,0.786,0.722,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,3,3,2-3,2.104,2,4.457,2.353,2.994,0.89,0.7315,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,1,0-1,2.062,2,4.216,2.154,2.755,0.693,0.7305,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,1,1-2,2.037,2,4.362,2.325,2.892,0.855,0.735,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,1,2-3,1.875,2,4.162,2.287,2.707,0.832,0.7275,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,2,0-1,2.067,2,4.357,2.29,2.897,0.83,0.73,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,2,1-2,2.059,2,4.48,2.421,3.049,0.99,0.7155,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,2,2-3,2.049,2,4.437,2.388,3.055,1.006,0.691,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,3,0-1,2.061,2,4.319,2.258,2.89,0.829,0.7145,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,3,1-2,2.005,2,4.493,2.488,3.097,1.092,0.698,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,1,3,2-3,1.985,2,4.408,2.423,2.966,0.981,0.721,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,1,0-1,1.719,2,4.025,2.306,2.597,0.878,0.714,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,1,1-2,1.813,2,4.173,2.36,2.812,0.999,0.6805,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,1,2-3,1.816,2,4.162,2.346,2.736,0.92,0.713,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,3,0-1,1.832,2,4.21,2.378,2.773,0.941,0.7185,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,3,1-2,1.971,2,4.509,2.538,3.105,1.134,0.702,duplicated measurements from Mangrove_12
+Mangrove_13,post-hurricane,2,3,2-3,1.978,2,4.396,2.418,3.047,1.069,0.6745,duplicated measurements from Mangrove_12
+Mangrove_14,post-hurricane,1,1,0-1,2.014,2,4.246,2.232,2.847,0.833,0.6995,
+Mangrove_14,post-hurricane,1,2,0-1,1.885,2,4.112,2.227,2.733,0.848,0.6895,
+Mangrove_14,post-hurricane,1,3,0-1,1.987,2,4.148,2.161,2.761,0.774,0.6935,
+Mangrove_14,post-hurricane,2,1,0-1,2.025,2,4.275,2.25,2.837,0.812,0.719,
+Mangrove_14,post-hurricane,2,2,0-1,1.884,2,4.05,2.166,2.574,0.69,0.738,
+Mangrove_14,post-hurricane,2,3,0-1,1.989,2,4.232,2.243,NA,NA,NA,
+Mangrove_14,post-hurricane,3,1,0-1,2.017,2,4.233,2.216,2.774,0.757,0.7295,
+Mangrove_14,post-hurricane,3,2,0-1,2.021,2,4.237,2.216,2.781,0.76,0.728,
+Mangrove_14,post-hurricane,3,3,0-1,1.974,2,4.137,2.163,2.733,0.759,0.702,
+Mangrove_14,post-hurricane,4,1,0-1,1.956,2,4.135,2.179,2.688,0.732,0.7235,
+Mangrove_14,post-hurricane,4,2,0-1,1.986,2,4.159,2.173,2.721,0.735,0.719,
+Mangrove_14,post-hurricane,4,3,0-1,1.927,2,4.033,2.106,2.66,0.733,0.6865,
+Mangrove_15,post-hurricane,1,1,0-1,2.014,2,4.246,2.232,2.847,0.833,0.6995,
+Mangrove_15,post-hurricane,1,2,0-1,1.885,2,4.112,2.227,2.733,0.848,0.6895,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,1,3,0-1,1.987,2,4.148,2.161,2.761,0.774,0.6935,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,2,1,0-1,2.025,2,4.275,2.25,2.837,0.812,0.719,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,2,2,0-1,1.884,2,4.05,2.166,2.574,0.69,0.738,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,2,3,0-1,1.989,2,4.232,2.243,NA,NA,NA,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,3,1,0-1,2.017,2,4.233,2.216,2.774,0.757,0.7295,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,3,2,0-1,2.021,2,4.237,2.216,2.781,0.76,0.728,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,3,3,0-1,1.974,2,4.137,2.163,2.733,0.759,0.702,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,4,1,0-1,1.956,2,4.135,2.179,2.688,0.732,0.7235,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,4,2,0-1,1.986,2,4.159,2.173,2.721,0.735,0.719,duplicated measurements from Mangrove_14
+Mangrove_15,post-hurricane,4,3,0-1,1.927,2,4.033,2.106,2.66,0.733,0.6865,duplicated measurements from Mangrove_14
