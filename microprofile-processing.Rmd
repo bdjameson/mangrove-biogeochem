@@ -1,5 +1,5 @@
 ---
-title: "Microprofile Corrections for Mangrove Sediment Microelectrode Data"
+title: "Microelectrode Data Processing Workflow"
 author: "Brett D. Jameson"
 date: "`r Sys.Date()`"
 output:
@@ -7,46 +7,69 @@ output:
     toc: true
     toc_float: true
     number_sections: true
-    theme: united
-editor_options: 
+    theme: flatly
+    code_folding: show
+    df_print: paged
+  pdf_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+editor_options:
   chunk_output_type: console
+fontsize: 11pt
+geometry: margin=1in
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo = TRUE,
-  message = FALSE,
-  warning = FALSE,
-  fig.path = "figures/",
-  fig.width = 7,
-  fig.height = 5
-)
+# 🌊 Overview
 
-# Core tidyverse
+This notebook implements a **reproducible workflow** for correcting **sensor signal drift** in microelectrode (microprofile) measurements collected from sediment environments. Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. Temperatures were monitored throughout each experiment using HOBO temp/light pendant loggers.
+
+🧭 **Workflow outline:**
+
+1. Import and trim HOBO temperature logs  
+2. Combine temperature, profile, and calibration datasets  
+3. Apply drift corrections  
+4. Compute final analyte concentrations using calibration curves 
+5. Adjust profiles to standardized baselines  
+6. Generate exploratory data plots
+7. Export corrected profiles for further interpretation 
+
+Each section includes brief narrative guidance followed by executable R code.
+
+# ⚙️ Packages and Global Options
+
+Load core packages for data manipulation, modeling, and visualization.
+
+```{r setup, message=FALSE, warning=FALSE}
 library(tidyverse)
-library(fuzzyjoin)
+library(purrr)
 library(broom)
+library(fuzzyjoin)
+library(car)
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
 
-# Optional modeling libs (load only when needed)
-#library(broom)
-#library(purrr)
-#library(dplyr)
-#library(tidyr)
 
-# Reproducibility
-Sys.setlocale("LC_TIME", "C")  # ensures consistent datetime parsing
+knitr::opts_chunk$set(
+echo = TRUE,
+warning = FALSE,
+message = FALSE,
+fig.width = 8,
+fig.height = 6
+)
 ```
 
-# Mangrove Biogeochemistry (MBGC) Project - Microprofile Data Processing and Visualization
 
-This R Markdown file contains scripts associated with the processing and visualization of sediment microprofile data. 
+# 🗂️ Metadata and HOBO Logger Data
 
-Data were collected as part of the 2024 Mangrove Biogeochemistry project. Freshly collected mangrove sediment cores were incubated daily under varying nutrient amendment regimes and profiled to characterize vertical distributions of N2O, NO, H2S, and O2. Porewater profiles were obtained following light and dark incubations using Clark-type microelectrodes from Unisense. Temperatures were monitored throughout each experiment using HOBO temp/light pendant loggers.
+## 🧾 Import Metadata
 
-## Metadata and HOBO logger Data
+This section imports experimental metadata (incubation intervals, flume assignments, light conditions) and parses date formats. 
 
-### Metadata Input
-Read metadata file containing experiment IDs and incubation time intervals.
 ```{r read_metadata, message=FALSE, warning=FALSE}
 dir_compiled <- "./compiled-data"
 meta_path <- file.path(dir_compiled, "MBGC.experiment.metadata.csv")
@@ -96,8 +119,12 @@ print(sapply(metadata, class))
 # metadata |> select(experiment, start_date, end_date, dark_start, light_start) |> print(n = Inf)
 ```
 
-### HOBO Logger Data Input. 
-Read HOBO logger data containing incubation temperature logs.
+## 🌡️ Import and Trim HOBO Logs. 
+
+Incubation temperatures were recorded using HOBO pendant temperature loggers. Here each HOBO temperature log is read and trimmed to the incubation period defined in the metadata file.
+
+### 🧩 Map HOBO data to metadata table
+
 ```{r hobo_read, message=FALSE, warning=FALSE}
 # Path to HOBO CSVs
 path_hobo <- "./hobo-data/"
@@ -177,8 +204,11 @@ df |>
   print(n = Inf)
 ```
 
-### Trim the HOBO logger data to incubation intervals.
-For each experiment, filter HOBO temperature records so that only points within the incubation period (start_date to end_date) are retained.
+### ✂️ Trim HOBO Logger Data to Incubation Intervals
+
+For each experiment, HOBO temperature records are filtered so that only timestamps within the incubation period are retained.
+This removes pre- or post-incubation readings that are not relevant to the analysis.
+
 ```{r hobo_trim, message=FALSE, warning=FALSE}
 df_trimmed <- df |>
   mutate(
@@ -194,6 +224,7 @@ df_trimmed <- df |>
 ```
 
 Next, combine data files by experiment and add 'flume' identifier for temperature log plotting.
+
 ```{r hobo_combine, message=FALSE, warning=FALSE}
 # Combine HOBO data by experiment and add flume identifier for plotting
 df_trimmed <- df_trimmed %>%
@@ -210,9 +241,17 @@ df_trimmed <- df_trimmed %>%
   )
 ```
 
-### HOBO exploratory plots
+📈 HOBO Exploratory Plots
 
-Create function for generating exploratory temperature log plots
+Before proceeding with calibration and correction, it’s important to visually confirm that the **temperature records** align with the defined incubation periods.  
+This step helps identify any sensor irregularities or logger drift prior to use in later modeling steps.
+
+The code below generates exploratory plots for each experiment, displaying temperature variation over time across flumes.  
+Vertical reference lines mark key events:
+- 🟦 **Dark incubation start**
+- 🟩 **Light incubation start**
+- 🟥 **End of incubation**
+
 ```{r hobo_plot, message=FALSE, warning=FALSE}
 df_trimmed <- df_trimmed |>
   mutate(
@@ -235,19 +274,23 @@ df_trimmed <- df_trimmed |>
       }
     )
   )
-```
 
-Pull out and inspect temperature logs for each experiment.
-```{r hobo_inspect, message=FALSE, warning=FALSE}
 df_trimmed |>
   filter(experiment == "Mangrove_8") |>
   pull(temp_plot)
 ```
 
-## Microprofile Data Processing
+# 🧪 Profiles and Calibrations
 
-### Read Microprofile Data
-Read the raw microprofile sensor output from the Unisense SensorTrace Suite software.
+This section imports and organizes **microelectrode profile data** and their corresponding **sensor calibrations**.  
+Microprofiles for O₂, N₂O, NO, and H₂S were collected using Clark-type microelectrodes (Unisense) during both light and dark incubations.  
+Each dataset is cleaned, formatted, and nested by experiment to enable downstream signal correction and calibration mapping.
+
+## 📥 Read Microprofile Data
+
+Microprofiles (O₂, N₂O, NO, H₂S) are imported and structured into **nested data frames** for each experiment.  
+Datetime values are standardized to `POSIXct` and categorical variables (e.g., `flume`, `treatment`, `channel`) are converted to factors for consistency.
+
 ```{r profile_read, message=FALSE, warning=FALSE}
 # Read microprofile data
 profiles <- readr::read_csv("./compiled-data/MBGC.mangrove.microprofiles.2024.csv") |>
@@ -259,8 +302,12 @@ profiles <- readr::read_csv("./compiled-data/MBGC.mangrove.microprofiles.2024.cs
   )
 ```
 
-### Read Calibration Info
-Next we need to input the calibration data, including high- and low-point concentrations, slopes, and intercepts.
+## ⚙️ Read Calibration Data
+
+Two-point **sensor calibration data** (slope and intercept) are imported for each experiment and formatted for use in subsequent signal correction steps.  
+
+Each calibration record corresponds to a specific **sensor channel** and **analyte**
+
 ```{r calibration_input, message=FALSE, warning=FALSE}
 cal_trim <- readr::read_csv(
   "./compiled-data/MBGC.sensor.calibrations.2024.csv",
@@ -275,10 +322,25 @@ cal_trim <- readr::read_csv(
     channel  = as.factor(channel)
   ) |>
   dplyr::select(-time)
+
+# ✅ Quick check: confirm structure and units
+glimpse(cal_trim)
 ```
 
-### Combine HOBO, Profile, and Calibration Data
-For each experiment, attach its corresponding microprofiles and calibration entries. This yields a nested tibble ready for sensor correction and alignment procedures.
+🧩 Note:
+In this workflow, two-point calibrations were performed before each profiling session.
+When multiple calibrations were available for a single experiment (e.g., mid-run adjustments), the workflow automatically selects the most appropriate calibration based on timing and consistency across channels.
+
+# 🔗 Data Integration
+
+This section combines the **HOBO temperature logs**, **microelectrode profiles**, and **sensor calibration data** into a single, unified data structure.  
+The resulting **nested tibble** links each experiment with its corresponding temperature record (`temp`), microprofiles (`profiles`), and calibration coefficients (`cals`), preparing the dataset for subsequent drift correction and calibration application.
+
+## 🧩 Combine HOBO, Profile, and Calibration Data
+
+For each experiment, the relevant microprofiles and calibrations are attached to the corresponding temperature data.  
+This step ensures that all datasets share consistent experiment-level identifiers and temporal alignment before correction and analysis.
+
 ```{r profile_combine, message=FALSE, warning=FALSE}
 # Combine temperature logs with profiles and calibrations
 df_combined <- df_trimmed |>
@@ -299,10 +361,20 @@ df_combined <- df_trimmed |>
   )
 ```
 
-## Microprofile QC
+# 🧭 Quality Control
 
-### Exoporatory Plots (Raw Data)
-Visualize raw microprofile data before any QC filtering.
+Before applying corrections or calibrations, it’s important to visually inspect the **raw sensor data** for consistency and potential anomalies.
+
+This step helps identify outlier signals, noisy sensors, or incomplete profiles prior to quantitative processing.
+
+## 📊 Exploratory QC Plots (Raw Data)
+
+Visualize **raw microprofile voltage (mV)** distributions for each analyte before any quality control filtering or signal correction.  
+These plots provide a quick way to confirm that:
+- Sensor channels are functioning properly  
+- Profile depths are correctly aligned  
+- Signal magnitudes fall within expected ranges  
+
 ```{r microprofile_qc, message=FALSE, warning=FALSE}
 df_combined <- df_combined |>
   mutate(
@@ -324,8 +396,11 @@ df_combined |>
   pull(profile_plot)
 ```
 
-### Remove Duplicated Profiles
-Some cores contain two replicates when the first profile failed or looked suspicious. This step ensures only the best replicate is retained for each unique incubation set.
+## 🧹 Remove Duplicated Profiles
+
+Occasionally, certain cores were profiled **more than once** when the initial attempt failed or produced a noisy signal.  
+This step filters the dataset so that only the **best-quality replicate** is retained for each unique combination of incubation, flume, and channel.
+
 ```{r qc_duplicates, message=FALSE, warning=FALSE}
 df_combined <- df_combined |>
   mutate(
@@ -339,10 +414,15 @@ df_combined <- df_combined |>
   )
 ```
 
-### Sulfide Interference
-We can see from the Nitric Oxide experiments (i.e Experiment_6) that we are getting sulfide interference on the sensor, as shown by the large spikes at the bottom of the profile domain. We want to remove these profiles before the drift correction procedure, as the correction relies on the assumption of zero analyte at the bottom of the profile. 
+🧩 Note:
+Selection criteria can be customized — for example, retaining the replicate with the highest signal strength, most complete depth coverage, or least noise.
 
-To accomplish this, we will tell R to look at the final mV reading for each profile and remove profiles where this value is significantly larger than the calibration intercept (zero-point.)
+## ⚗️ Addressing Sulfide Interference
+
+During Nitric Oxide (NO) profiling (notably in Experiment 6), some profiles exhibited strong sulfide interference, seen as sharp spikes in signal near the bottom of the sediment column.
+Because the drift correction algorithm assumes analyte concentrations approach zero near the profile base, these contaminated profiles must be removed before correction.
+
+We handle this automatically by filtering out any profiles where the final mV reading exceeds twice the expected zero-point intercept from the calibration curve.
 
 ```{r qc_sulfide, message=FALSE, warning=FALSE}
 # ---- Step 1: Create a calibration lookup table ----
@@ -385,8 +465,23 @@ df_combined <- df_combined |>
   )
 ```
 
-### Exploratory Plots (after QC filtering)
-Re-generate plots to verify that replicate selection and sulfide filtering succeeded.
+🧪 Interpretation guide:
+
+- ✅ Profiles retained: clean signals approaching zero near the sediment base.
+
+- ⚠️ Profiles removed: likely contaminated by H₂S cross-sensitivity.
+
+- 💡 Removing these early ensures the drift model assumptions remain valid and improves downstream correction accuracy.
+
+## 📈 Exploratory Plots (After QC Filtering)
+
+Now that duplicate and contaminated profiles have been removed, we regenerate diagnostic plots to verify that the **replicate selection** and **sulfide interference filtering** worked as intended.
+
+These plots should display:
+- One clean replicate per analyte, channel, and flume  
+- Smooth signal decay toward the sediment base (for NO, N₂O, O₂)  
+- Stable, non-spiking H₂S profiles
+
 ```{r qc_postplot, message=FALSE, warning=FALSE}
 df_combined <- df_combined |>
   mutate(
@@ -408,11 +503,20 @@ df_combined |>
   pull(profile_plot)
 ```
 
-## Microprofile Signal Drift Corrections
-The profile data is currently in raw mV format. Before applying the calibrations to each experiment, we need to correct the sensor signal readout for changes due to drift during the profiling interval. 
+# ⚙️ Drift Correction
 
-### Mapping Temperatures to Microprofile Data
-We will start by merging the profile data with the corresponding HOBO temperature log data. We will then pull out the last three observations from each profile (Jameson et al., 2024), assuming that these values represent 'true' zeros. These data points are then used to assess how the baseline signal changes with temperature.
+Before converting voltages to concentrations, we must correct for signal drift that can occur during profiling.
+Drift arises from gradual shifts in the electrode’s baseline potential, often due to small changes in temperature, electrode polarization, or electronic instability during measurement.
+
+## 🌡️ Map Incubation Temperatures to Microprofile Observations
+
+To quantify and correct for drift, we first link each microprofile time series with the corresponding HOBO temperature records.
+This allows us to assess whether baseline changes are associated with temperature variability.
+
+Next, we extract the bottom three readings from each profile — assumed to represent true zero-analyte conditions (following Jameson et al., 2024).
+
+These zero points provide a stable reference for modeling baseline drift over time and temperature.
+
 ```{r microprofile_drift, message=FALSE, warning=FALSE}
 # ==== 1. Define fuzzy join helper ====
 # Joins profile data (mV) and HOBO temp data within ±5 minutes for each flume.
@@ -502,15 +606,32 @@ df_sliced <- df_combined |>
   )
 ```
 
-### Visualizing Sensor Drift.
+🧪 Interpretation guide:
 
-Define a plot function for visualizing sensor drift. These relationships are later used for sensor drift correction.
+The fuzzy join ensures temperature and microprofile timestamps align within ±5 minutes.
+
+Extracted zero regions serve as the baseline reference for the drift correction models (time- or temperature-based).
+
+## 📉 Visualizing Sensor Drift
+
+Before applying any statistical correction, it’s important to **visualize how the sensor baseline changes** through time and with temperature.  
+This diagnostic step helps identify whether drift is primarily **time-dependent**, **temperature-driven**, or minimal altogether.
+
+We’ll generate exploratory plots showing how the **zero-point voltages (mV)** vary across each experiment and analyte.  
+These visual checks provide valuable intuition for choosing between the **time-based** and **temperature-dependent** correction models introduced later.
+
+**Purpose**:
+
+- Detect **temporal trends** in the zero readings (linear or non-linear drift)  
+- Evaluate **temperature coupling** between sensor response and incubator conditions  
+- Identify sensors with **unstable baselines** or erratic behavior  
+
 ```{r drift_plot, message=FALSE, warning=FALSE}
 df_sliced <- df_sliced |>
   mutate(
     temp_correct = purrr::map2(
       zeros, experiment,
-      ~ ggplot(.x, aes(x = tempC, y = mV)) +
+      ~ ggplot(.x, aes(x = tempC, y = mV)) + # Change x variable to assess time effects. 
         geom_point(aes(shape = core, color = flume)) +
         facet_wrap(~channel + light.dark, scales = "free", nrow = 2) +
         labs(title = paste("Drift assessment –", .y),
@@ -526,10 +647,24 @@ df_sliced |>
   pull(temp_correct)
 ```
 
-## Drift Correction Procedure:
+## Drift Modelling Procedure:
 
 ### Time-Based Drift Correction
-Define drift over time using a simple linear regression model. This model is often sufficient to correct for linear sensor drift over the course of an experiment when temperatures are held constant.
+
+When measurement temperatures are stable and the experimental duration is relatively short (typically less than 4 hours), sensor drift can often be modeled as a simple linear function of time. This correction assumes that drift arises from gradual changes in the sensor’s electrochemical baseline—such as slow reference electrode potential shifts or membrane stabilization—rather than external temperature fluctuations.
+
+In this step, a linear regression model (mV ~ time) is fitted independently for each analyte and channel using only the zero-domain points (i.e., the bottom few measurements where true analyte concentration is minimal). The model estimates a baseline drift slope (ΔmV/sec) and tests its statistical significance.
+
+For each experiment:
+
+- ✅ Only slopes with p < 0.05 are retained for correction (adjust for more stringent correction procedure).
+
+- ⚙️ The initial calibration intercept (from the pre-run calibration) is used as the reference baseline.
+
+- 🚫 Profiles without significant slopes are left uncorrected, ensuring that random variation is not overfitted.
+
+- The fitted slope is then subtracted from the raw signal (mV) to generate drift-corrected voltages (corrected_mV), which represent the adjusted electrochemical response of the sensor over time.
+
 ```{r drift_correction, message=FALSE, warning=FALSE}
 # ---- Step 1: Fit Time-Based Drift Model ----
 # Define baseline drift using a simple linear regression on time for each analyte and channel.
@@ -583,6 +718,7 @@ df_model <- df_sliced |>
 
 # ---- Step 2: Apply Drift Correction ----
 df_corrected <- df_combined |>
+  ungroup() |>
   mutate(
     profiles = map2(profiles, df_model$drift_model, \(prof_df, drift_df) {
       prof_df |>
@@ -606,8 +742,124 @@ df_corrected <- df_combined |>
   )
 ```
 
-### Plot Corrected Profiles
-Create function for visualizing drift-corrected signal.
+### Temperature Effects Correction 
+
+In experiments where temperature variability may influence sensor baselines, both time and temperature effects can be modeled simultaneously. The model suite includes terms for time, time², and tempC, automatically simplifying if collinearity is detected (using variance-inflation checks).
+
+For each analyte–channel group:
+
+- 📊 Models are retained only if adjusted R² ≥ 0.3 and at least one predictor is significant (p < 0.01).
+
+- 🧠 If both time and temperature effects are significant, a combined correction is applied; otherwise, only the relevant term is used.
+
+- 🔒 If neither is significant, the original signal is preserved.
+
+```{r drift_correction_time_temp, message=FALSE, warning=FALSE}
+# Helper: safe VIF checker
+safe_vif_check <- function(model) {
+  out <- tryCatch(car::vif(model), error = function(e) NA)
+  if (all(is.na(out))) return(NA)
+  out
+}
+
+# ==== 1. Fit drift (time + temperature) models ====
+p_thresh <- 0.01   # significance cutoff for slope terms
+
+df_model <- df_sliced |>
+  mutate(
+    drift_model = map2(zeros, cals, \(zeros_df, cal_df) {
+      
+      # ---- Extract initial calibration intercepts ----
+      cal_intercept <- cal_df |>
+        rename_with(~ str_replace_all(., "light[\\.]*dark", "light_dark")) |>
+        filter(cal.ID == 1) |>
+        distinct(experiment, light_dark, channel, analyte, intercept)
+      
+      zeros_df |>
+        rename_with(~ str_replace_all(., "light[\\.]*dark", "light_dark")) |>
+        group_by(experiment, light_dark, channel, analyte) |>
+        mutate(time_numeric = as.numeric(difftime(date_time, min(date_time), units = "secs"))) |>
+        left_join(cal_intercept, by = c("experiment", "light_dark", "channel", "analyte")) |>
+        do({
+          # ---- Fit model with time, time², and tempC ----
+          model <- lm(mV ~ time_numeric + I(time_numeric^2) + tempC, data = .)
+          vif_values <- tryCatch(car::vif(model), error = function(e) rep(1, 3))
+          
+          # Simplify if collinearity is high
+          if (any(vif_values > 5, na.rm = TRUE)) {
+            model <- lm(mV ~ time_numeric + tempC, data = .)
+          }
+          
+          summary_model <- summary(model)
+          coefs <- summary_model$coefficients
+          
+          # ---- Safe extraction helpers ----
+          get_coef <- function(term) if (term %in% rownames(coefs)) coefs[term, "Estimate"] else NA_real_
+          get_pval <- function(term) if (term %in% rownames(coefs)) coefs[term, "Pr(>|t|)"] else NA_real_
+          get_sig  <- function(term) if (term %in% rownames(coefs)) coefs[term, "Pr(>|t|)"] < p_thresh else FALSE
+          
+          data.frame(
+            experiment        = unique(.$experiment),
+            light_dark        = unique(.$light_dark),
+            channel           = unique(.$channel),
+            analyte           = unique(.$analyte),
+            intercept          = get_coef("(Intercept)") - unique(.$intercept),
+            time_slope         = get_coef("time_numeric"),
+            temp_slope         = get_coef("tempC"),
+            time_p_value       = get_pval("time_numeric"),
+            temp_p_value       = get_pval("tempC"),
+            time_significant   = get_sig("time_numeric"),
+            temp_significant   = get_sig("tempC"),
+            adj_r2             = summary_model$adj.r.squared %||% 0
+          )
+        }) |>
+        ungroup() |>
+        # ---- Apply filters for model quality and significance ----
+        filter(
+          adj_r2 >= 0.3,
+          (time_significant | temp_significant)
+        )
+    })
+  )
+
+# ---- Step 2: Apply Drift Correction ----
+df_corrected <- df_combined %>%
+  ungroup() |>
+  mutate(
+    profiles = map2(profiles, df_model$drift_model, ~ {
+      .x %>%
+        rename_with(~ str_replace_all(., "light[\\.]*dark", "light_dark")) %>%
+        left_join(
+          .y %>% filter((time_significant | temp_significant) & adj_r2 >= 0.2),
+          by = c("experiment", "light_dark", "channel", "analyte")
+        ) %>%
+        mutate(
+          time_numeric = as.numeric(difftime(date_time, min(date_time), units = "secs")),
+          corrected_mV = case_when(
+            !is.na(time_slope) & time_significant & temp_significant ~ 
+              mV - (intercept + time_slope * time_numeric + temp_slope * tempC),
+            !is.na(time_slope) & time_significant ~ 
+              mV - (intercept + time_slope * time_numeric),
+            !is.na(temp_slope) & temp_significant ~ 
+              mV - (intercept + temp_slope * tempC),
+            TRUE ~ mV
+          )
+        ) %>%
+        select(
+          -time_slope, -temp_slope, -time_significant, -temp_significant,
+          -time_p_value, -temp_p_value, -time_numeric, -intercept, -adj_r2
+        )
+    })
+  )
+```
+
+## 🔧 Plot Drift-Corrected Profiles
+
+Now that sensor drift has been modeled and corrected, we can visualize the **cleaned microprofiles** to verify that the correction procedure worked as intended.  
+
+This diagnostic plot overlays the **drift-corrected signal (mV)** for each core, flume, and analyte.  
+It allows for quick comparison between experiments and helps confirm that baseline alignment has improved following correction.
+
 ```{r correction_plot, message=FALSE, warning=FALSE}
 # ==== 1. Generate drift-corrected profile plots ====
 df_corrected <- df_corrected |>
@@ -652,11 +904,24 @@ df_corrected |>
 ```
 
 
-## Calculating Analyte Concentrations
+# ⚗️ Sensor Calibration
 
-### Applying Calibration Coefficients
+Once the sensor drift has been corrected, the next step is to **convert voltage (mV) readings into analyte concentrations (µmol L⁻¹)** using the experimentally derived calibration curves.  
 
-Now that the profiles have been corrected for signal drift, we can apply the calibration coefficients to calculate analyte concentrations. We will query the calibrations table to look for significant changes in calibration slope for experiments with multiple calibrations. If slope remains consistent, we will apply the first calibration. If slope changes considerably, we will use a time-weighted average slope.
+Calibration ensures that each sensor’s electrical response is properly scaled, allowing direct comparison across treatments, analytes, and experiments.
+
+## 🧮 Applying Calibration Coefficients
+
+For each experiment, we query the calibration table to identify whether **multiple calibrations** were performed during the same run.  
+
+- If **slope and intercept values remain stable** (≤10% change), we apply the *first calibration* (pre-run).  
+- If **drift between calibrations** is evident (>10% difference in slope), we apply a *time-weighted average* slope to approximate the mean calibration response. 
+
+**🔍 Purpose:**
+
+- Transform corrected sensor voltages into **real concentration units**  
+- Account for **slight shifts in sensor calibration curves** during measurement  
+- Maintain **consistency** between sensors and across experiments  
 
 ```{r, calibration, message=FALSE, warning=FALSE}
 df_calibrated <- df_corrected |>
@@ -746,8 +1011,10 @@ df_calibrated <- df_corrected |>
   )
 ```
 
-### Plot Calibrated Profiles
-Add plot function to inspect the calibrated profiles. 
+📊 Inspect Calibrated Profiles
+
+After applying the calibrations, we can visualize the converted profiles to confirm that each analyte’s concentration gradient behaves as expected.
+
 ```{r calibrated_profiles_plot, message=FALSE, warning=FALSE}
 # ---- Plot function ----
 df_plots <- df_calibrated |>
@@ -780,9 +1047,19 @@ df_plots |>
   pull(profile_plot)
 ```
 
+# 🎯 Final Profile Adjustments
 
-## Final Profile Adjustments
-Now we want to adjust each profile so that the bottom (or top in the case of H2S) of the profile domain is 'landing' on zero. We are assuming here that analyte concentrations at the profile bottom are at or close to zero.
+After calibration, each microprofile is adjusted so that the **baseline (bottom or top)** aligns with zero.  
+For most analytes (O₂, N₂O, NO), we assume concentrations at the *bottom of the profile* are close to zero.  
+For **H₂S**, this assumption is reversed — we expect near-zero concentrations at the *top of the profile* due to oxidation near the sediment–water interface.
+
+These minor baseline adjustments help standardize the datasets across replicates and ensure consistent profile comparisons.
+
+## ⚙️ Adjustment Procedure
+
+For each analyte, we calculate the **mean of the bottom (or top) three points** and subtract this value from the entire profile.  
+This yields an *adjusted concentration* where the baseline is set to zero while maintaining the integrity of the original gradient.
+
 ```{r profile_adjust, message=FALSE, warning=FALSE}
 df_adjusted <- df_calibrated %>%
   mutate(
@@ -799,8 +1076,10 @@ df_adjusted <- df_calibrated %>%
   )
 ```
 
-### Plot Adjusted Profiles
-Add plot function to inspect the profiles following adjustment. 
+📊 Plot Adjusted Profiles
+
+After the baseline adjustment, we visualize the final, standardized concentration profiles to confirm that all analytes now land near zero at their expected ends of the profile domain.
+
 ```{r adjusted_profiles_plot, message=FALSE, warning=FALSE}
 df_adj_plots <- df_adjusted |>
   mutate(
@@ -832,9 +1111,18 @@ df_adj_plots %>%
   pull(profile_plot)
 ```
 
+🧪 Interpretation Guide:
 
-## Extract & Save Profiles.
-The final step is to save our clean profiles data to .csv files. This can be done for the combined dataset, or each analyte can be saved separately as below. 
+- ✅ Profiles land near zero at expected boundary → baseline successfully standardized
+
+- ⚠️ Offsets remain (>5 µmol L⁻¹) → recheck calibration or replicate assignment
+
+- 🌀 H₂S shows inversion → confirm top-down orientation of depth sorting
+
+# 💾 Extract & Save Profiles
+
+Finally, we export the clean, adjusted profiles for downstream statistical and visualization analyses.
+You can either save the full dataset or separate analytes into individual .csv files for easier integration into external workflows.
 
 ```{r profile_write, message=FALSE, warning=FALSE}
 ## Extract & Save Final Adjusted Profiles
