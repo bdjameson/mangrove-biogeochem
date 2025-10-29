@@ -55,5 +55,5 @@ The workflows support **sensor drift correction**, **calibration**, and **PROFIL
 
 1. **Clone this repository:**
    ```bash
-   git clone https://github.com/<your-username>/<repo-name>.git
-   cd <repo-name>
+   git clone https://github.com/bdjameson/mangrove-biogeochem.git
+   cd mangrove-biogeochem
