@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Manuscript Status](https://img.shields.io/badge/Status-Under%20Review%20at%20GRL-orange.svg)]()
 
-This repository provides all code, data, and documentation for processing and modeling **mangrove sediment microprofile data** collected before and after a hurricane disturbance in Bermuda.  
+This repository provides all code, data, and documentation for processing and modeling **sediment microprofile data** collected before and after a hurricane disturbance in Bermuda.  
 The workflows support **sensor drift correction**, **calibration**, and **PROFILE model input generation** for quantifying microscale redox zonation and biogeochemical fluxes.
 
 > 🧾 **Citation:** Jameson, B. D., Moran, T. H., Hendrikx, C., Sawall, Y., & Grundle, D. S.(2025). *Hurricane disturbance alters surface sediment redox chemistry and stimulates N₂O consumption in a subtropical mangrove stand.* Manuscript submitted for review in *Geophysical Research Letters.*
