@@ -63,7 +63,7 @@ fig.height = 6
 )
 ```
 
-
+#
 # 🗂️ Metadata and HOBO Logger Data
 
 ## 🧾 Import Metadata
@@ -118,7 +118,7 @@ print(sapply(metadata, class))
 # glimpse(metadata)
 # metadata |> select(experiment, start_date, end_date, dark_start, light_start) |> print(n = Inf)
 ```
-
+#
 ## 🌡️ Import and Trim HOBO Logs. 
 
 Incubation temperatures were recorded using HOBO pendant temperature loggers. Here each HOBO temperature log is read and trimmed to the incubation period defined in the metadata file.
@@ -285,7 +285,7 @@ df_trimmed |>
 This section imports and organizes **microelectrode profile data** and their corresponding **sensor calibrations**.  
 Microprofiles for O₂, N₂O, NO, and H₂S were collected using Clark-type microelectrodes (Unisense) during both light and dark incubations.  
 Each dataset is cleaned, formatted, and nested by experiment to enable downstream signal correction and calibration mapping.
-
+#
 ## 📥 Read Microprofile Data
 
 Microprofiles (O₂, N₂O, NO, H₂S) are imported and structured into **nested data frames** for each experiment.  
